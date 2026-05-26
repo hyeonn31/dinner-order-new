@@ -32,6 +32,7 @@ export default function OrderPage() {
   const [sideMenu, setSideMenu] = useState("");
   const [drinkOption, setDrinkOption] = useState("");
   const [extraOption, setExtraOption] = useState("");
+  const [dressingOption, setDressingOption] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
   const [isClosed, setIsClosed] = useState(false);
@@ -74,10 +75,11 @@ export default function OrderPage() {
 
   // 식당 변경 시 이전 식당의 메뉴 선택값 초기화
   useEffect(() => {
-    setMainMenu("");
-    setSideMenu("");
-    setExtraOption("");
-  }, [selectedRestaurantId]);
+      setMainMenu("");
+      setSideMenu("");
+      setExtraOption("");
+      setDressingOption("");
+    }, [selectedRestaurantId]);
 
   // 드롭다운 외부 클릭 감지
   useEffect(() => {
@@ -159,6 +161,7 @@ export default function OrderPage() {
   const mainMenus = menus?.filter((m: any) => m.itemType === "main") ?? [];
   const sideMenus = menus?.filter((m: any) => m.itemType === "side") ?? [];
   const drinkMenus = menus?.filter((m: any) => m.itemType === "drink") ?? [];
+  const dressingMenus = menus?.filter((m: any) => m.itemType === "dressing") ?? [];
   const optionMenus = menus?.filter((m: any) => m.itemType === "option" || m.itemType === "extra") ?? [];
   const selectableMainMenus = mainMenus.length > 0 ? mainMenus : (menus ?? []);
 
@@ -367,6 +370,24 @@ export default function OrderPage() {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* 드레싱 */}
+                  {dressingMenus.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium mb-1.5" style={{ color: "oklch(0.55 0.02 250)" }}>드레싱</div>
+                      <Select value={dressingOption} onValueChange={setDressingOption}>
+                        <SelectTrigger className="w-full h-11">
+                          <SelectValue placeholder="드레싱을 선택하세요" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          <SelectItem value="none">선택 안함</SelectItem>
+                          {dressingMenus.map((m: any) => (
+                            <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   {/* 추가 옵션 */}
                   {optionMenus.length > 0 && (

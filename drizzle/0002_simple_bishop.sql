@@ -1,0 +1,1 @@
+ALTER TABLE `menu_items` MODIFY COLUMN `itemType` enum('main','side','drink','option','dressing') NOT NULL DEFAULT 'main';

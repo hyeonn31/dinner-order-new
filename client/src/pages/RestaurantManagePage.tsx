@@ -57,6 +57,7 @@ export default function RestaurantManagePage() {
     { value: "main", label: "메인메뉴" },
     { value: "side", label: "사이드" },
     { value: "drink", label: "음료" },
+    { value: "dressing", label: "드레싱" },
     { value: "option", label: "추가옵션" },
   ];
 

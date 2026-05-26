@@ -46,7 +46,7 @@ export const menuItems = mysqlTable("menu_items", {
   id: int("id").autoincrement().primaryKey(),
   restaurantId: int("restaurantId").notNull(),
   name: varchar("name", { length: 300 }).notNull(),
-  itemType: mysqlEnum("itemType", ["main", "side", "drink", "option"]).default("main").notNull(),
+  itemType: mysqlEnum("itemType", ["main", "side", "drink", "option", "dressing"]).default("main").notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
 });
 

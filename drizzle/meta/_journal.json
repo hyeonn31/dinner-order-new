@@ -15,6 +15,13 @@
       "when": 1779801413770,
       "tag": "0001_polite_cammi",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1779806779142,
+      "tag": "0002_simple_bishop",
+      "breakpoints": true
     }
   ]
 }
