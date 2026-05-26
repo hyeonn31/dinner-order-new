@@ -1,16 +1,11 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { formatOrderMenuDisplay } from "@shared/formatOrderMenu";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
-  InsertUser,
-  dailySettings,
-  employees,
-  menuItems,
-  orders,
-  restaurantCategories,
-  restaurants,
-  users,
+  InsertUser, users, restaurants, restaurantCategories,
+  menuItems, employees, dailySettings, orders
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
+import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -30,32 +25,37 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
   if (!db) return;
-
-  const values: InsertUser = { openId: user.openId };
-  const updateSet: Record<string, unknown> = {};
-  const textFields = ["name", "email", "loginMethod"] as const;
-  textFields.forEach((field) => {
-    const value = user[field];
-    if (value === undefined) return;
-    const normalized = value ?? null;
-    values[field] = normalized;
-    updateSet[field] = normalized;
-  });
-  if (user.lastSignedIn !== undefined) {
-    values.lastSignedIn = user.lastSignedIn;
-    updateSet.lastSignedIn = user.lastSignedIn;
+  try {
+    const values: InsertUser = { openId: user.openId };
+    const updateSet: Record<string, unknown> = {};
+    const textFields = ["name", "email", "loginMethod"] as const;
+    type TextField = (typeof textFields)[number];
+    const assignNullable = (field: TextField) => {
+      const value = user[field];
+      if (value === undefined) return;
+      const normalized = value ?? null;
+      values[field] = normalized;
+      updateSet[field] = normalized;
+    };
+    textFields.forEach(assignNullable);
+    if (user.lastSignedIn !== undefined) {
+      values.lastSignedIn = user.lastSignedIn;
+      updateSet.lastSignedIn = user.lastSignedIn;
+    }
+    if (user.role !== undefined) {
+      values.role = user.role;
+      updateSet.role = user.role;
+    } else if (user.openId === ENV.ownerOpenId) {
+      values.role = 'admin';
+      updateSet.role = 'admin';
+    }
+    if (!values.lastSignedIn) values.lastSignedIn = new Date();
+    if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
+    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+  } catch (error) {
+    console.error("[Database] Failed to upsert user:", error);
+    throw error;
   }
-  if (user.role !== undefined) {
-    values.role = user.role;
-    updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
-    values.role = "admin";
-    updateSet.role = "admin";
-  }
-  if (!values.lastSignedIn) values.lastSignedIn = new Date();
-  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-
-  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 
 export async function getUserByOpenId(openId: string) {
@@ -65,176 +65,346 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// ─── 식당 카테고리 ───────────────────────────────────────────────────────────
-export async function getAllCategories() {
+// ─── 식당 관련 ────────────────────────────────────────────────
+export async function getRestaurantCategories() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(restaurantCategories).orderBy(restaurantCategories.sortOrder);
+  return await db
+    .select({
+      id: restaurantCategories.id,
+      name: restaurantCategories.name,
+      sortOrder: restaurantCategories.sortOrder,
+    })
+    .from(restaurantCategories)
+    .orderBy(restaurantCategories.sortOrder);
 }
 
-// ─── 식당 ────────────────────────────────────────────────────────────────────
-export async function getAllRestaurants() {
+export type RestaurantWithCategory = {
+  id: number;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+  categoryId: number;
+  categoryName: string;
+  categorySortOrder: number;
+};
+
+function restaurantWithCategorySelect() {
+  return {
+    id: restaurants.id,
+    name: restaurants.name,
+    isActive: restaurants.isActive,
+    sortOrder: restaurants.sortOrder,
+    categoryId: restaurants.categoryId,
+    categoryName: sql<string>`COALESCE(${restaurantCategories.name}, '미분류')`,
+    categorySortOrder: sql<number>`COALESCE(${restaurantCategories.sortOrder}, 999)`,
+  };
+}
+
+export async function getAllRestaurantsWithCategories(): Promise<RestaurantWithCategory[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(restaurants).where(eq(restaurants.isActive, true)).orderBy(restaurants.sortOrder);
+  return await db
+    .select(restaurantWithCategorySelect())
+    .from(restaurants)
+    .leftJoin(restaurantCategories, eq(restaurants.categoryId, restaurantCategories.id))
+    .orderBy(sql`COALESCE(${restaurantCategories.sortOrder}, 999)`, restaurants.sortOrder);
 }
 
-export async function getRestaurantById(id: number) {
+export async function getRestaurantById(id: number): Promise<RestaurantWithCategory | null> {
   const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(restaurants).where(eq(restaurants.id, id)).limit(1);
-  return result[0];
+  if (!db) return null;
+  const rows = await db
+    .select(restaurantWithCategorySelect())
+    .from(restaurants)
+    .leftJoin(restaurantCategories, eq(restaurants.categoryId, restaurantCategories.id))
+    .where(eq(restaurants.id, id))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
-export async function addRestaurant(categoryId: number, name: string) {
+export async function insertRestaurant(data: { name: string; categoryId: number }) {
   const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(restaurants).values({ categoryId, name, isActive: true, sortOrder: 0 });
+  if (!db) throw new Error("Database not available");
+
+  const category = await db
+    .select({ id: restaurantCategories.id })
+    .from(restaurantCategories)
+    .where(eq(restaurantCategories.id, data.categoryId))
+    .limit(1);
+  if (category.length === 0) {
+    throw new Error("INVALID_CATEGORY");
+  }
+
+  const maxSort = await db
+    .select({ max: sql<number>`COALESCE(MAX(${restaurants.sortOrder}), 0)` })
+    .from(restaurants)
+    .where(eq(restaurants.categoryId, data.categoryId));
+  const nextSort = (maxSort[0]?.max ?? 0) + 1;
+
+  await db.insert(restaurants).values({
+    name: data.name,
+    categoryId: data.categoryId,
+    sortOrder: nextSort,
+    isActive: true,
+  });
+
+  const [created] = await db
+    .select(restaurantWithCategorySelect())
+    .from(restaurants)
+    .leftJoin(restaurantCategories, eq(restaurants.categoryId, restaurantCategories.id))
+    .where(and(eq(restaurants.name, data.name), eq(restaurants.categoryId, data.categoryId)))
+    .orderBy(desc(restaurants.id))
+    .limit(1);
+
+  if (!created) {
+    throw new Error("Failed to load created restaurant");
+  }
+  return created;
 }
 
-export async function deleteRestaurant(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(restaurants).set({ isActive: false }).where(eq(restaurants.id, id));
-}
-
-// ─── 메뉴 ────────────────────────────────────────────────────────────────────
 export async function getMenusByRestaurant(restaurantId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(menuItems).where(eq(menuItems.restaurantId, restaurantId)).orderBy(menuItems.sortOrder);
+  return await db
+    .select()
+    .from(menuItems)
+    .where(eq(menuItems.restaurantId, restaurantId))
+    .orderBy(menuItems.itemType, menuItems.sortOrder);
 }
 
-export async function getMenusByRestaurants(restaurantIds: number[]) {
-  const db = await getDb();
-  if (!db || restaurantIds.length === 0) return [];
-  return db.select().from(menuItems).where(inArray(menuItems.restaurantId, restaurantIds)).orderBy(menuItems.sortOrder);
-}
-
-export async function addMenuItem(restaurantId: number, name: string, itemType: "main" | "side" | "drink" | "option") {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(menuItems).values({ restaurantId, name, itemType, sortOrder: 0 });
-}
-
-export async function deleteMenuItem(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.delete(menuItems).where(eq(menuItems.id, id));
-}
-
-// ─── 직원 ────────────────────────────────────────────────────────────────────
+// ─── 직원 관련 ────────────────────────────────────────────────
 export async function getAllEmployees() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(employees).where(eq(employees.isActive, true)).orderBy(employees.sortOrder, employees.nickname);
+  return await db
+    .select()
+    .from(employees)
+    .where(eq(employees.isActive, true))
+    .orderBy(employees.sortOrder);
 }
 
-export async function addEmployee(nickname: string) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.insert(employees).values({ nickname, sortOrder: 0, isActive: true });
-}
-
-export async function deleteEmployee(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(employees).set({ isActive: false }).where(eq(employees.id, id));
-}
-
-// ─── 일일 설정 ───────────────────────────────────────────────────────────────
-export async function getDailySettings(date: string) {
+// ─── 일일 설정 관련 ──────────────────────────────────────────
+export async function getTodaySettings(today: string) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(dailySettings).where(
-    and(sql`DATE(${dailySettings.settingDate}) = ${date}`, eq(dailySettings.isActive, true))
-  );
+  return await db
+    .select({
+      id: dailySettings.id,
+      restaurantId: dailySettings.restaurantId,
+      restaurantName: restaurants.name,
+      categoryId: restaurantCategories.id,
+      categoryName: restaurantCategories.name,
+      isClosed: dailySettings.isClosed,
+    })
+    .from(dailySettings)
+    .innerJoin(restaurants, eq(dailySettings.restaurantId, restaurants.id))
+    .leftJoin(restaurantCategories, eq(restaurants.categoryId, restaurantCategories.id))
+    .where(and(sql`DATE(${dailySettings.settingDate}) = ${today}`, eq(dailySettings.isActive, true)))
+    .orderBy(restaurantCategories.sortOrder, restaurants.sortOrder);
 }
 
-export async function setDailyRestaurants(date: string, restaurantIds: number[]) {
+export async function setTodayRestaurants(today: string, restaurantIds: number[]) {
   const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  // 기존 설정 비활성화
-  await db.update(dailySettings).set({ isActive: false }).where(sql`DATE(${dailySettings.settingDate}) = ${date}`);
-  // 새 설정 삽입
+  if (!db) return;
+  await db.delete(dailySettings).where(sql`DATE(${dailySettings.settingDate}) = ${today}`);
   if (restaurantIds.length > 0) {
     await db.insert(dailySettings).values(
-      restaurantIds.map((rid) => ({ settingDate: date as unknown as Date, restaurantId: rid, isActive: true, isClosed: false }))
+      restaurantIds.map(rid => ({
+        settingDate: today as unknown as Date,
+        restaurantId: rid,
+        isActive: true,
+      }))
     );
   }
 }
 
-export async function resetDay(date: string) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  await db.update(dailySettings).set({ isActive: false }).where(sql`DATE(${dailySettings.settingDate}) = ${date}`);
-  await db.delete(orders).where(sql`DATE(${orders.orderDate}) = ${date}`);
-}
-
-// ─── 주문 ────────────────────────────────────────────────────────────────────
-export async function getOrdersByDate(date: string) {
+// ─── 주문 관련 ────────────────────────────────────────────────
+export async function getTodayOrders(today: string) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(orders).where(sql`DATE(${orders.orderDate}) = ${date}`).orderBy(orders.createdAt);
+  return await db
+    .select({
+      id: orders.id,
+      employeeId: orders.employeeId,
+      employeeNickname: employees.nickname,
+      restaurantId: orders.restaurantId,
+      restaurantName: restaurants.name,
+      mainMenuName: orders.mainMenuName,
+      sideMenuName: orders.sideMenuName,
+      drinkOption: orders.drinkOption,
+      extraOption: orders.extraOption,
+      note: orders.note,
+      createdAt: orders.createdAt,
+    })
+    .from(orders)
+    .innerJoin(employees, eq(orders.employeeId, employees.id))
+    .innerJoin(restaurants, eq(orders.restaurantId, restaurants.id))
+    .where(sql`DATE(${orders.orderDate}) = ${today}`)
+    .orderBy(restaurants.name, employees.nickname);
 }
 
-export async function getOrderByEmployeeDate(employeeId: number, date: string) {
+export async function getOrderByEmployee(today: string, employeeId: number) {
   const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(orders).where(
-    and(eq(orders.employeeId, employeeId), sql`DATE(${orders.orderDate}) = ${date}`)
-  ).limit(1);
-  return result[0];
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(orders)
+    .where(and(sql`DATE(${orders.orderDate}) = ${today}`, eq(orders.employeeId, employeeId)))
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getOrderByEmployeeWithRestaurant(today: string, employeeId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select({
+      id: orders.id,
+      mainMenuName: orders.mainMenuName,
+      sideMenuName: orders.sideMenuName,
+      drinkOption: orders.drinkOption,
+      extraOption: orders.extraOption,
+      restaurantName: restaurants.name,
+    })
+    .from(orders)
+    .innerJoin(restaurants, eq(orders.restaurantId, restaurants.id))
+    .where(and(sql`DATE(${orders.orderDate}) = ${today}`, eq(orders.employeeId, employeeId)))
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
 }
 
 export async function upsertOrder(data: {
-  orderDate: string;
+  today: string;
   employeeId: number;
   restaurantId: number;
-  mainMenuId?: number;
   mainMenuName?: string;
-  sideMenuId?: number;
   sideMenuName?: string;
   drinkOption?: string;
   extraOption?: string;
   note?: string;
 }) {
   const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const existing = await getOrderByEmployeeDate(data.employeeId, data.orderDate);
+  if (!db) return { isUpdate: false, oldMenu: null, newMenu: null };
+  const existing = await getOrderByEmployee(data.today, data.employeeId);
   if (existing) {
+    // 기존 메뉴 저장
+    const oldMenu = formatOrderMenuDisplay(existing, { mainFallback: "메뉴 미선택" });
+    const newMenu = formatOrderMenuDisplay(data, { mainFallback: "메뉴 미선택" });
+
     await db.update(orders).set({
       restaurantId: data.restaurantId,
-      mainMenuId: data.mainMenuId ?? null,
       mainMenuName: data.mainMenuName ?? null,
-      sideMenuId: data.sideMenuId ?? null,
       sideMenuName: data.sideMenuName ?? null,
       drinkOption: data.drinkOption ?? null,
       extraOption: data.extraOption ?? null,
       note: data.note ?? null,
-    }).where(eq(orders.id, existing.id));
-    return existing.id;
+    }).where(and(sql`DATE(${orders.orderDate}) = ${data.today}`, eq(orders.employeeId, data.employeeId)));
+
+    return { isUpdate: true, oldMenu, newMenu };
   } else {
-    const result = await db.insert(orders).values({
-      orderDate: data.orderDate as unknown as Date,
+    await db.insert(orders).values({
+      orderDate: data.today as unknown as Date,
       employeeId: data.employeeId,
       restaurantId: data.restaurantId,
-      mainMenuId: data.mainMenuId ?? null,
       mainMenuName: data.mainMenuName ?? null,
-      sideMenuId: data.sideMenuId ?? null,
       sideMenuName: data.sideMenuName ?? null,
       drinkOption: data.drinkOption ?? null,
       extraOption: data.extraOption ?? null,
       note: data.note ?? null,
     });
-    return (result as any)[0]?.insertId;
+    return { isUpdate: false, oldMenu: null, newMenu: null };
   }
 }
 
-export async function deleteOrder(employeeId: number, date: string) {
+export async function deleteOrder(today: string, employeeId: number) {
   const db = await getDb();
-  if (!db) throw new Error("DB not available");
+  if (!db) return;
   await db.delete(orders).where(
-    and(eq(orders.employeeId, employeeId), sql`DATE(${orders.orderDate}) = ${date}`)
+    and(sql`DATE(${orders.orderDate}) = ${today}`, eq(orders.employeeId, employeeId))
   );
+}
+
+export async function resetTodayData(today: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(orders).where(sql`DATE(${orders.orderDate}) = ${today}`);
+  await db.delete(dailySettings).where(sql`DATE(${dailySettings.settingDate}) = ${today}`);
+}
+
+// ─── 주문 취합 통계 ──────────────────────────────────────────
+export async function getOrderSummary(today: string) {
+  const allOrders = await getTodayOrders(today);
+  const summaryMap = new Map<string, Map<string, number>>();
+
+  for (const order of allOrders) {
+    const restName = order.restaurantName;
+    if (!summaryMap.has(restName)) summaryMap.set(restName, new Map());
+    const menuMap = summaryMap.get(restName)!;
+
+    const combinedKey = formatOrderMenuDisplay(order, { mainFallback: "메뉴 미선택" });
+    menuMap.set(combinedKey, (menuMap.get(combinedKey) || 0) + 1);
+  }
+
+  return Array.from(summaryMap.entries()).map(([restaurant, menus]) => ({
+    restaurant,
+    items: Array.from(menus.entries()).map(([menu, count]) => ({ menu, count })),
+  }));
+}
+
+
+
+
+// ─── 주문 이력 조회 ──────────────────────────────────────────
+export async function getOrderHistory({
+  startDate,
+  endDate,
+  employeeId,
+  restaurantId,
+}: {
+  startDate?: string;
+  endDate?: string;
+  employeeId?: number;
+  restaurantId?: number;
+} = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  
+  if (startDate) {
+    conditions.push(sql`DATE(${orders.orderDate}) >= DATE(${startDate})`);
+  }
+  if (endDate) {
+    conditions.push(sql`DATE(${orders.orderDate}) <= DATE(${endDate})`);
+  }
+  if (employeeId) {
+    conditions.push(eq(orders.employeeId, employeeId));
+  }
+  if (restaurantId) {
+    conditions.push(eq(orders.restaurantId, restaurantId));
+  }
+  
+  const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+  
+  return await db
+    .select({
+      id: orders.id,
+      orderDate: orders.orderDate,
+      employeeId: orders.employeeId,
+      employeeNickname: employees.nickname,
+      restaurantId: orders.restaurantId,
+      restaurantName: restaurants.name,
+      mainMenuName: orders.mainMenuName,
+      sideMenuName: orders.sideMenuName,
+      drinkOption: orders.drinkOption,
+      extraOption: orders.extraOption,
+      note: orders.note,
+      createdAt: orders.createdAt,
+    })
+    .from(orders)
+    .innerJoin(employees, eq(orders.employeeId, employees.id))
+    .innerJoin(restaurants, eq(orders.restaurantId, restaurants.id))
+    .where(whereCondition)
+    .orderBy(orders.orderDate, employees.nickname);
 }

@@ -1,364 +1,487 @@
 import { useState } from "react";
-import { trpc } from "@/lib/trpc";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+import { Plus, Trash2, Loader2, Lock, Eye, EyeOff } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import { Lock, Store, Plus, Trash2, ChevronLeft, ChevronDown, ChevronUp } from "lucide-react";
-import { Link } from "wouter";
 
 const ADMIN_PASSWORD = "2101";
 
-const ITEM_TYPE_LABELS: Record<string, string> = {
-  main: "메인",
-  side: "사이드",
-  drink: "음료",
-  option: "옵션",
-};
+export default function RestaurantManagePage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-function PasswordGate({ children }: { children: React.ReactNode }) {
-  const [input, setInput] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
-  const [error, setError] = useState(false);
-
-  function handleUnlock() {
-    if (input === ADMIN_PASSWORD) {
-      setUnlocked(true);
+  const handlePasswordSubmit = () => {
+    if (password === ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+      setPassword("");
+      toast.success("관리 페이지에 접근했습니다.");
     } else {
-      setError(true);
-      setInput("");
+      toast.error("비밀번호가 틀렸습니다.");
+      setPassword("");
     }
-  }
+  };
 
-  if (unlocked) return <>{children}</>;
-
-  return (
-    <div className="max-w-sm mx-auto mt-12">
-      <Card>
-        <CardHeader className="text-center pb-3">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-            <Lock className="w-6 h-6 text-primary" />
-          </div>
-          <CardTitle className="text-lg font-bold">관리자 인증</CardTitle>
-          <p className="text-sm text-muted-foreground">비밀번호를 입력하세요</p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            type="password"
-            placeholder="비밀번호"
-            value={input}
-            onChange={(e) => { setInput(e.target.value); setError(false); }}
-            onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-            className={error ? "border-destructive" : ""}
-          />
-          {error && <p className="text-xs text-destructive">비밀번호가 올바르지 않습니다.</p>}
-          <Button className="w-full font-bold" onClick={handleUnlock}>확인</Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function RestaurantContent() {
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.restaurant.list.useQuery();
+  const { data: categories, isLoading: categoriesLoading } = trpc.restaurant.listCategories.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
+  const {
+    data: restaurants,
+    isLoading: restaurantsLoading,
+    refetch: refetchRestaurants,
+  } = trpc.restaurant.list.useQuery(undefined, { enabled: isAuthenticated });
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<number | null>(null);
+  const [newRestaurantName, setNewRestaurantName] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [newMenuName, setNewMenuName] = useState("");
+  const [selectedMenuType, setSelectedMenuType] = useState<string>("main");
+  const [deleteRestaurantId, setDeleteRestaurantId] = useState<number | null>(null);
+  const [deleteMenuId, setDeleteMenuId] = useState<number | null>(null);
 
-  const [newRestName, setNewRestName] = useState("");
-  const [newRestCategoryId, setNewRestCategoryId] = useState<string>("");
-  const [expandedRestaurant, setExpandedRestaurant] = useState<number | null>(null);
-  const [newMenuName, setNewMenuName] = useState<Record<number, string>>({});
-  const [newMenuType, setNewMenuType] = useState<Record<number, string>>({});
+  const menuTypes = [
+    { value: "main", label: "메인메뉴" },
+    { value: "side", label: "사이드" },
+    { value: "drink", label: "음료" },
+    { value: "option", label: "추가옵션" },
+  ];
 
-  const addRestMutation = trpc.restaurant.addRestaurant.useMutation({
-    onSuccess: () => {
-      toast.success("식당이 추가되었습니다.");
-      setNewRestName("");
-      setNewRestCategoryId("");
-      utils.restaurant.list.invalidate();
+  const selectedRestaurant = restaurants?.find(r => r.id === selectedRestaurantId);
+  const { data: menus, isLoading: menusLoading } = trpc.restaurant.menus.useQuery(
+    { restaurantId: selectedRestaurantId || 0 },
+    { enabled: !!selectedRestaurantId }
+  );
+
+  // 식당 추가
+  const addRestaurantMutation = trpc.restaurant.addRestaurant.useMutation({
+    onSuccess: async (created) => {
+      toast.success("식당이 추가되었습니다");
+      setNewRestaurantName("");
+      setSelectedCategory("");
+      utils.restaurant.list.setData(undefined, old => {
+        if (!old) return [created];
+        if (old.some(r => r.id === created.id)) return old;
+        return [...old, created].sort(
+          (a, b) =>
+            a.categorySortOrder - b.categorySortOrder || a.sortOrder - b.sortOrder
+        );
+      });
+      await refetchRestaurants();
     },
-    onError: (err) => toast.error(err.message),
+    onError: (error) => {
+      toast.error(`식당 추가 실패: ${error.message}`);
+    },
   });
 
-  const deleteRestMutation = trpc.restaurant.deleteRestaurant.useMutation({
-    onSuccess: () => {
-      toast.success("식당이 삭제되었습니다.");
-      utils.restaurant.list.invalidate();
-      utils.daily.getToday.invalidate();
+  // 식당 삭제
+  const deleteRestaurantMutation = trpc.restaurant.deleteRestaurant.useMutation({
+    onSuccess: async (_data, variables) => {
+      toast.success("식당이 삭제되었습니다");
+      utils.restaurant.list.setData(undefined, old =>
+        old?.filter(r => r.id !== variables.restaurantId)
+      );
+      await refetchRestaurants();
+      setDeleteRestaurantId(null);
     },
-    onError: (err) => toast.error(err.message),
+    onError: (error) => {
+      toast.error(`식당 삭제 실패: ${error.message}`);
+    },
   });
 
+  // 메뉴 추가
   const addMenuMutation = trpc.restaurant.addMenu.useMutation({
-    onSuccess: (_, vars) => {
-      toast.success("메뉴가 추가되었습니다.");
-      setNewMenuName((prev) => ({ ...prev, [vars.restaurantId]: "" }));
-      utils.restaurant.list.invalidate();
-      utils.restaurant.menus.invalidate();
-      utils.daily.getToday.invalidate();
+    onSuccess: () => {
+      toast.success("메뉴가 추가되었습니다");
+      setNewMenuName("");
+      setSelectedMenuType("main");
+      if (selectedRestaurantId) {
+        void utils.restaurant.menus.invalidate({ restaurantId: selectedRestaurantId });
+      }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (error) => {
+      toast.error(`메뉴 추가 실패: ${error.message}`);
+    },
   });
 
+  // 메뉴 삭제
   const deleteMenuMutation = trpc.restaurant.deleteMenu.useMutation({
     onSuccess: () => {
-      toast.success("메뉴가 삭제되었습니다.");
-      utils.restaurant.list.invalidate();
-      utils.restaurant.menus.invalidate();
-      utils.daily.getToday.invalidate();
+      toast.success("메뉴가 삭제되었습니다");
+      if (selectedRestaurantId) {
+        void utils.restaurant.menus.invalidate({ restaurantId: selectedRestaurantId });
+      }
+      setDeleteMenuId(null);
     },
-    onError: (err) => toast.error(err.message),
+    onError: (error) => {
+      toast.error(`메뉴 삭제 실패: ${error.message}`);
+    },
   });
 
-  // 메뉴 조회 (확장된 식당)
-  const { data: expandedMenus } = trpc.restaurant.menus.useQuery(
-    { restaurantId: expandedRestaurant ?? 0 },
-    { enabled: !!expandedRestaurant }
-  );
-
-  const categoryMap = new Map((data?.categories ?? []).map((c) => [c.id, c.name]));
-
-  // 카테고리별 식당 그룹핑
-  type RestaurantItem = { id: number; name: string; categoryId: number; isActive: boolean; sortOrder: number; createdAt: Date };
-  const grouped = new Map<number, { catName: string; restaurants: RestaurantItem[] }>();
-  for (const cat of (data?.categories ?? [])) {
-    grouped.set(cat.id, { catName: cat.name, restaurants: [] as RestaurantItem[] });
-  }
-  for (const r of (data?.restaurants ?? [])) {
-    if (grouped.has(r.categoryId)) {
-      grouped.get(r.categoryId)!.restaurants.push(r);
+  const handleAddRestaurant = () => {
+    if (!newRestaurantName.trim()) {
+      toast.error("식당 이름을 입력하세요");
+      return;
     }
+    if (!selectedCategory) {
+      toast.error("카테고리를 선택하세요");
+      return;
+    }
+    addRestaurantMutation.mutate({
+      name: newRestaurantName,
+      categoryId: parseInt(selectedCategory),
+      password: ADMIN_PASSWORD,
+    });
+  };
+
+  const handleDeleteRestaurant = (restaurantId: number) => {
+    deleteRestaurantMutation.mutate({ restaurantId, password: ADMIN_PASSWORD });
+  };
+
+  const handleAddMenu = () => {
+    if (!newMenuName.trim()) {
+      toast.error("메뉴 이름을 입력하세요");
+      return;
+    }
+    if (!selectedRestaurantId) {
+      toast.error("식당을 선택하세요");
+      return;
+    }
+    addMenuMutation.mutate({
+      restaurantId: selectedRestaurantId,
+      name: newMenuName,
+      itemType: selectedMenuType,
+      password: ADMIN_PASSWORD,
+    });
+  };
+
+  const handleDeleteMenu = (menuId: number) => {
+    deleteMenuMutation.mutate({ menuId, password: ADMIN_PASSWORD });
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: "oklch(0.35 0.08 250)" }}>
+                <Lock className="w-6 h-6" style={{ color: "oklch(0.85 0.15 250)" }} />
+              </div>
+            </div>
+            <CardTitle>식당/메뉴 관리</CardTitle>
+            <CardDescription>비밀번호를 입력하세요</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder="비밀번호"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handlePasswordSubmit()}
+                className="pr-10"
+              />
+              <button
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <Button
+              onClick={handlePasswordSubmit}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              접근
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/admin">
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-            <ChevronLeft className="w-4 h-4" />
-            관리자
-          </Button>
-        </Link>
-        <h1 className="text-xl font-black flex items-center gap-2">
-          <Store className="w-5 h-5 text-primary" />
-          식당/메뉴 관리
-        </h1>
-      </div>
-
-      {/* 식당 추가 */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-bold text-muted-foreground uppercase tracking-wide">식당 추가</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Select value={newRestCategoryId} onValueChange={setNewRestCategoryId}>
-              <SelectTrigger className="w-32 shrink-0">
-                <SelectValue placeholder="카테고리" />
-              </SelectTrigger>
-              <SelectContent>
-                {(data?.categories ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              placeholder="식당 이름"
-              value={newRestName}
-              onChange={(e) => setNewRestName(e.target.value)}
-            />
-            <Button
-              onClick={() => {
-                if (!newRestCategoryId || !newRestName.trim()) return;
-                addRestMutation.mutate({
-                  categoryId: parseInt(newRestCategoryId),
-                  name: newRestName.trim(),
-                  password: ADMIN_PASSWORD,
-                });
-              }}
-              disabled={!newRestCategoryId || !newRestName.trim() || addRestMutation.isPending}
-              className="gap-1.5 shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              추가
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 식당 목록 */}
-      {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+    <div className="min-h-screen bg-background p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground mb-2">식당 & 메뉴 관리</h1>
+          <p className="text-muted-foreground">식당과 메뉴를 추가, 수정, 삭제할 수 있습니다</p>
         </div>
-      ) : (
-        Array.from(grouped.entries()).map(([catId, { catName, restaurants }]) => (
-          restaurants.length > 0 && (
-            <Card key={catId}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-primary inline-block" />
-                  {catName}
-                  <Badge variant="secondary" className="text-xs ml-auto">{restaurants.length}곳</Badge>
-                </CardTitle>
+
+        <Tabs defaultValue="restaurants" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="restaurants">식당 관리</TabsTrigger>
+            <TabsTrigger value="menus">메뉴 관리</TabsTrigger>
+          </TabsList>
+
+          {/* 식당 관리 탭 */}
+          <TabsContent value="restaurants" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>식당 추가</CardTitle>
+                <CardDescription>새로운 식당을 추가하세요</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {restaurants.map((r) => (
-                  <div key={r.id} className="border border-border rounded-lg overflow-hidden">
-                    {/* 식당 헤더 */}
-                    <div className="flex items-center justify-between px-3 py-2.5 bg-muted/30">
-                      <button
-                        className="flex items-center gap-2 flex-1 text-left font-semibold text-sm hover:text-primary transition-colors"
-                        onClick={() => setExpandedRestaurant(expandedRestaurant === r.id ? null : r.id)}
-                      >
-                        {expandedRestaurant === r.id ? (
-                          <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                        )}
-                        {r.name}
-                      </button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>식당 삭제</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              <strong>{r.name}</strong>을(를) 삭제하시겠습니까? 해당 식당의 메뉴도 모두 삭제됩니다.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>취소</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-destructive text-white hover:bg-destructive/90"
-                              onClick={() => deleteRestMutation.mutate({ id: r.id, password: ADMIN_PASSWORD })}
-                            >
-                              삭제
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-
-                    {/* 메뉴 목록 (확장 시) */}
-                    {expandedRestaurant === r.id && (
-                      <div className="px-3 py-2 space-y-2">
-                        {/* 메뉴 추가 */}
-                        <div className="flex gap-2 pt-1">
-                          <Input
-                            placeholder="메뉴 이름"
-                            value={newMenuName[r.id] ?? ""}
-                            onChange={(e) => setNewMenuName((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                            className="text-sm h-8"
-                          />
-                          <Select
-                            value={newMenuType[r.id] ?? "main"}
-                            onValueChange={(v) => setNewMenuType((prev) => ({ ...prev, [r.id]: v }))}
-                          >
-                            <SelectTrigger className="w-24 h-8 text-xs shrink-0">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="main">메인</SelectItem>
-                              <SelectItem value="side">사이드</SelectItem>
-                              <SelectItem value="drink">음료</SelectItem>
-                              <SelectItem value="option">옵션</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            size="sm"
-                            className="h-8 px-2 shrink-0"
-                            onClick={() => {
-                              const name = newMenuName[r.id]?.trim();
-                              if (!name) return;
-                              addMenuMutation.mutate({
-                                restaurantId: r.id,
-                                name,
-                                itemType: (newMenuType[r.id] ?? "main") as "main" | "side" | "drink" | "option",
-                                password: ADMIN_PASSWORD,
-                              });
-                            }}
-                            disabled={!newMenuName[r.id]?.trim() || addMenuMutation.isPending}
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-
-                        {/* 메뉴 항목 */}
-                        {expandedMenus && expandedMenus.length > 0 ? (
-                          <div className="divide-y divide-border border border-border rounded-md">
-                            {expandedMenus.map((menu) => (
-                              <div key={menu.id} className="flex items-center justify-between px-3 py-2">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="text-xs px-1.5 py-0">
-                                    {ITEM_TYPE_LABELS[menu.itemType]}
-                                  </Badge>
-                                  <span className="text-sm">{menu.name}</span>
-                                </div>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive">
-                                      <Trash2 className="w-3 h-3" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>메뉴 삭제</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        <strong>{menu.name}</strong>을(를) 삭제하시겠습니까?
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>취소</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-destructive text-white hover:bg-destructive/90"
-                                        onClick={() => deleteMenuMutation.mutate({ id: menu.id, password: ADMIN_PASSWORD })}
-                                      >
-                                        삭제
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground text-center py-2">등록된 메뉴가 없습니다.</p>
-                        )}
-                      </div>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="식당 이름"
+                    value={newRestaurantName}
+                    onChange={(e) => setNewRestaurantName(e.target.value)}
+                  />
+                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder={categoriesLoading ? "로딩..." : "카테고리"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories?.map(cat => (
+                        <SelectItem key={cat.id} value={cat.id.toString()}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    onClick={handleAddRestaurant}
+                    disabled={addRestaurantMutation.isPending || categoriesLoading || !categories?.length}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {addRestaurantMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        추가
+                      </>
                     )}
-                  </div>
-                ))}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
-          )
-        ))
-      )}
-    </div>
-  );
-}
 
-export default function RestaurantManagePage() {
-  return (
-    <PasswordGate>
-      <RestaurantContent />
-    </PasswordGate>
+            <Card>
+              <CardHeader>
+                <CardTitle>식당 목록</CardTitle>
+                <CardDescription>총 {restaurants?.length || 0}개의 식당</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {restaurantsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  </div>
+                ) : restaurants && restaurants.length > 0 ? (
+                  <div className="space-y-2">
+                    {restaurants.map(restaurant => (
+                      <div
+                        key={restaurant.id}
+                        className="flex items-center justify-between p-3 bg-card border border-border rounded-lg hover:bg-muted/50 cursor-pointer transition"
+                        onClick={() => {
+                          setSelectedRestaurantId(restaurant.id);
+                        }}
+                      >
+                        <div className="flex-1">
+                          <p className="font-medium text-foreground">{restaurant.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {restaurant.categoryName}
+                            {restaurant.categoryName === "미분류" && (
+                              <span className="text-orange-600"> (카테고리 다시 설정 필요)</span>
+                            )}
+                          </p>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteRestaurantId(restaurant.id);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    식당이 없습니다
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* 메뉴 관리 탭 */}
+          <TabsContent value="menus" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>식당 선택</CardTitle>
+                <CardDescription>메뉴를 관리할 식당을 선택하세요</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Select value={selectedRestaurantId?.toString() || ""} onValueChange={(v) => {
+                  const id = parseInt(v);
+                  setSelectedRestaurantId(id);
+                }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="식당을 선택하세요" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {restaurants?.map(r => (
+                      <SelectItem key={r.id} value={r.id.toString()}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
+
+            {selectedRestaurant && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>메뉴 추가</CardTitle>
+                    <CardDescription>{selectedRestaurant.name}에 새로운 메뉴를 추가하세요</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="메뉴 이름"
+                        value={newMenuName}
+                        onChange={(e) => setNewMenuName(e.target.value)}
+                      />
+                      <Select value={selectedMenuType} onValueChange={setSelectedMenuType}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {menuTypes.map(type => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        onClick={handleAddMenu}
+                        disabled={addMenuMutation.isPending}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        {addMenuMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Plus className="w-4 h-4" />
+                            추가
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>메뉴 목록</CardTitle>
+                    <CardDescription>{selectedRestaurant.name} - 총 {menus?.length || 0}개 메뉴</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {menusLoading ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                      </div>
+                    ) : menus && menus.length > 0 ? (
+                      <div className="space-y-2">
+                        {menus.map(menu => (
+                          <div
+                            key={menu.id}
+                            className="flex items-center justify-between p-3 bg-card border border-border rounded-lg hover:bg-muted/50 transition"
+                          >
+                            <div className="flex-1">
+                              <p className="font-medium text-foreground">{menu.name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {menuTypes.find(t => t.value === menu.itemType)?.label}
+                              </p>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-destructive"
+                              onClick={() => setDeleteMenuId(menu.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        메뉴가 없습니다
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* 식당 삭제 확인 다이얼로그 */}
+      <AlertDialog open={deleteRestaurantId !== null} onOpenChange={(open) => !open && setDeleteRestaurantId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>식당 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 식당을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-3 justify-end">
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteRestaurantId && handleDeleteRestaurant(deleteRestaurantId)}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              삭제
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 메뉴 삭제 확인 다이얼로그 */}
+      <AlertDialog open={deleteMenuId !== null} onOpenChange={(open) => !open && setDeleteMenuId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>메뉴 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 메뉴를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-3 justify-end">
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMenuId && handleDeleteMenu(deleteMenuId)}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              삭제
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }

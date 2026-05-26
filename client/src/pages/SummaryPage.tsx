@@ -1,172 +1,336 @@
+import { useState } from "react";
+import {
+  formatMenuDisplayWithCount,
+  groupIdenticalMenuOrders,
+} from "@shared/formatOrderMenu";
 import { trpc } from "@/lib/trpc";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Copy, RefreshCw, ClipboardList, Users } from "lucide-react";
+import { Copy, RefreshCw, Users, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function SummaryPage() {
-  const { data, isLoading, refetch, isFetching } = trpc.order.summary.useQuery(undefined, {
-    refetchInterval: 15000, // 15초마다 자동 갱신
-  });
+  const utils = trpc.useUtils();
+  const { data: orders, isLoading: ordersLoading } = trpc.order.todayAll.useQuery(undefined, { refetchInterval: 30000 });
+  const { data: todayRestaurants } = trpc.daily.todayRestaurants.useQuery(undefined, { refetchInterval: 60000 });
+  const [expandedRestaurants, setExpandedRestaurants] = useState<Set<string>>(new Set());
 
-  const { data: todayList } = trpc.order.todayList.useQuery(undefined, {
-    refetchInterval: 15000,
-  });
+  const handleRefresh = () => {
+    utils.order.todayAll.invalidate();
+    toast.success("새로고침 완료!");
+  };
 
-  function handleCopy() {
-    if (!data?.copyText) return;
-    navigator.clipboard.writeText(data.copyText).then(() => {
-      toast.success("클립보드에 복사되었습니다!");
+  const toggleExpand = (name: string) => {
+    setExpandedRestaurants(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
     });
+  };
+
+  // 복사용 텍스트 생성
+  const generateCopyText = () => {
+    if (!orders || orders.length === 0) return "신청 내역이 없습니다.";
+    const today = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+    const lines: string[] = [`📋 저녁식사 주문 취합 (${today})`, ""];
+
+    // 식당별로 그룹화
+    const groupedByRestaurant = new Map<string, { orders: NonNullable<typeof orders>; zeroCokCount: number }>();
+    for (const order of orders) {
+      if (!groupedByRestaurant.has(order.restaurantName)) {
+        groupedByRestaurant.set(order.restaurantName, { orders: [], zeroCokCount: 0 });
+      }
+      const group = groupedByRestaurant.get(order.restaurantName)!;
+      group.orders.push(order);
+      if (order.drinkOption === "제로콜라") {
+        group.zeroCokCount++;
+      }
+    }
+
+    groupedByRestaurant.forEach((group, restaurant) => {
+      lines.push(`▶ ${restaurant} (제로콜라 ${group.zeroCokCount}개)`);
+      for (const { menu, count } of groupIdenticalMenuOrders(group.orders)) {
+        lines.push(`  • ${formatMenuDisplayWithCount(menu, count)}`);
+      }
+      lines.push("");
+    });
+
+    lines.push(`총 신청 인원: ${orders.length}명`);
+    
+    // 수정 사항이 있는 경우 표시
+    const updatedOrders = orders.filter(o => (o as any).isUpdated);
+    if (updatedOrders.length > 0) {
+      lines.push("");
+      lines.push("[수정 사항]");
+      for (const order of updatedOrders) {
+        const oldMenu = (order as any).oldMenu || "알 수 없음";
+        const newMenu = (order as any).newMenu || "알 수 없음";
+        lines.push(`  • ${order.employeeNickname}: ${oldMenu} → ${newMenu}`);
+      }
+    }
+    
+    return lines.join("\n");
+  };
+
+  const handleCopyAll = () => {
+    const text = generateCopyText();
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success("클립보드에 복사되었습니다!");
+    }).catch(() => toast.error("복사에 실패했습니다."));
+  };
+
+  const handleCopyRestaurant = (restaurantName: string, items: string[], zeroCokCount: number) => {
+    const lines = [`▶ ${restaurantName} (제로콜라 ${zeroCokCount}개)`];
+    for (const item of items) {
+      lines.push(`  • ${item}`);
+    }
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      toast.success(`${restaurantName} 주문이 복사되었습니다!`);
+    }).catch(() => toast.error("복사에 실패했습니다."));
+  };
+
+  const today = new Date().toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "long" });
+
+  // 미신청 직원 목록 (신청한 직원 ID 기준)
+  const orderedEmployeeIds = new Set(orders?.map(o => o.employeeId) ?? []);
+
+  // 식당별로 주문 그룹화
+  const groupedByRestaurant = new Map<string, typeof orders>();
+  if (orders) {
+    for (const order of orders) {
+      if (!groupedByRestaurant.has(order.restaurantName)) {
+        groupedByRestaurant.set(order.restaurantName, []);
+      }
+      groupedByRestaurant.get(order.restaurantName)!.push(order);
+    }
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-black text-foreground">주문 취합</h1>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          onClick={() => refetch()}
-          disabled={isFetching}
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
-          새로고침
-        </Button>
+    <div className="max-w-5xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="flex items-start justify-between flex-wrap gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl font-bold mb-1" style={{ color: "oklch(0.20 0.03 250)" }}>
+            주문 취합
+          </h1>
+          <div className="text-sm" style={{ color: "oklch(0.50 0.03 250)" }}>
+            {today} &mdash; 실시간 신청 현황
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-2">
+            <RefreshCw className="w-4 h-4" />
+            새로고침
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleCopyAll}
+            disabled={!orders || orders.length === 0}
+            className="gap-2"
+            style={{ background: "oklch(0.35 0.08 250)", color: "oklch(0.85 0.15 250)" }}
+          >
+            <Copy className="w-4 h-4" />
+            전체 복사
+          </Button>
+        </div>
       </div>
 
-      {/* 요약 카드 */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="bg-primary text-primary-foreground">
-          <CardContent className="py-4 px-5">
-            <p className="text-xs font-semibold opacity-80 mb-1">총 신청 인원</p>
-            <p className="text-3xl font-black">{isLoading ? "..." : data?.totalCount ?? 0}<span className="text-base font-medium ml-1">명</span></p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 px-5">
-            <p className="text-xs font-semibold text-muted-foreground mb-1">신청 식당 수</p>
-            <p className="text-3xl font-black text-foreground">
-              {isLoading ? "..." : data?.grouped.length ?? 0}<span className="text-base font-medium text-muted-foreground ml-1">곳</span>
-            </p>
-          </CardContent>
-        </Card>
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
+        <StatCard
+          label="총 신청 인원"
+          value={orders?.length ?? 0}
+          unit="명"
+          color="oklch(0.35 0.08 250)"
+        />
+        <StatCard
+          label="오늘의 식당"
+          value={todayRestaurants?.length ?? 0}
+          unit="곳"
+          color="oklch(0.55 0.18 250)"
+        />
+        <StatCard
+          label="식당별 주문"
+          value={groupedByRestaurant.size}
+          unit="건"
+          color="oklch(0.38 0.10 220)"
+        />
+        <StatCard
+          label="메뉴 종류"
+          value={orders?.length ?? 0}
+          unit="가지"
+          color="oklch(0.42 0.12 145)"
+        />
+        <StatCard
+          label="제로콜라"
+          value={orders?.filter(o => o.drinkOption === "제로콜라").length ?? 0}
+          unit="개"
+          color="oklch(0.35 0.15 280)"
+        />
       </div>
 
-      {/* 식당별 주문 현황 */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            식당별 주문 현황
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
-            </div>
-          ) : !data || data.grouped.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <ClipboardList className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">아직 신청된 주문이 없습니다.</p>
-            </div>
+      <Tabs defaultValue="summary">
+        <TabsList className="mb-6">
+          <TabsTrigger value="summary">주문 취합</TabsTrigger>
+          <TabsTrigger value="text">복사용 텍스트</TabsTrigger>
+        </TabsList>
+
+        {/* 주문 취합 탭 - 식당별 그룹화 */}
+        <TabsContent value="summary">
+          {ordersLoading ? (
+            <LoadingState />
+          ) : !orders || orders.length === 0 ? (
+            <EmptyState message="아직 신청 내역이 없습니다." />
           ) : (
             <div className="space-y-4">
-              {data.grouped.map((group, i) => (
-                <div key={i} className="rounded-lg border border-border overflow-hidden">
-                  <div className="bg-secondary px-4 py-2.5 flex items-center justify-between">
-                    <span className="font-bold text-secondary-foreground">{group.restaurantName}</span>
-                    <Badge variant="default" className="text-xs">{group.orders.length}명</Badge>
-                  </div>
-                  <div className="divide-y divide-border">
-                    {group.orders.map((ord, j) => {
-                      const parts: string[] = [];
-                      if (ord.mainMenuName) parts.push(ord.mainMenuName);
-                      if (ord.sideMenuName) parts.push(`사이드: ${ord.sideMenuName}`);
-                      if (ord.drinkOption) parts.push(`음료: ${ord.drinkOption}`);
-                      if (ord.extraOption) parts.push(ord.extraOption);
-                      return (
-                        <div key={j} className="px-4 py-2.5 flex items-start gap-3">
-                          <span className="font-semibold text-sm text-primary min-w-[4rem] shrink-0">{ord.employeeName}</span>
-                          <span className="text-sm text-foreground">
-                            {parts.join(" · ") || "메뉴 미선택"}
-                            {ord.note && <span className="text-muted-foreground ml-1">({ord.note})</span>}
+              {Array.from(groupedByRestaurant.entries()).map(([restaurant, restaurantOrders]) => {
+                const isExpanded = expandedRestaurants.has(restaurant);
+                const totalCount = restaurantOrders?.length ?? 0;
+                const zeroCokCount = (restaurantOrders ?? []).filter(o => o.drinkOption === "제로콜라").length;
+                const items = groupIdenticalMenuOrders(restaurantOrders ?? []).map(({ menu, count }) =>
+                  formatMenuDisplayWithCount(menu, count)
+                );
+
+                return (
+                  <div key={restaurant} className="rounded-2xl overflow-hidden"
+                    style={{ background: "white", border: "1px solid oklch(0.88 0.01 60)", boxShadow: "0 2px 12px oklch(0.18 0.02 30 / 0.05)" }}>
+                    {/* Restaurant Header */}
+                    <div
+                      className="flex items-center justify-between p-5 cursor-pointer"
+                      style={{ borderBottom: isExpanded ? "1px solid oklch(0.92 0.01 60)" : "none" }}
+                      onClick={() => toggleExpand(restaurant)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                          style={{ background: "oklch(0.35 0.08 250)" }}>
+                          <span className="text-sm font-bold" style={{ color: "oklch(0.55 0.18 250)" }}>
+                            {totalCount}
                           </span>
                         </div>
-                      );
-                    })}
+                        <div>
+                          <div className="font-semibold" style={{ color: "oklch(0.20 0.03 250)" }}>
+                            {restaurant}
+                          </div>
+                          <div className="text-xs" style={{ color: "oklch(0.55 0.02 30)" }}>
+                            {totalCount}명 · 제로콜라 {zeroCokCount}개
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-xs h-8"
+                          onClick={e => { e.stopPropagation(); handleCopyRestaurant(restaurant, items, zeroCokCount); }}
+                        >
+                          <Copy className="w-3 h-3" />
+                          복사
+                        </Button>
+                        {isExpanded
+                          ? <ChevronUp className="w-4 h-4" style={{ color: "oklch(0.55 0.02 30)" }} />
+                          : <ChevronDown className="w-4 h-4" style={{ color: "oklch(0.55 0.02 30)" }} />
+                        }
+                      </div>
+                    </div>
+
+                    {/* Menu Items */}
+                    {isExpanded && (
+                      <div className="p-5 space-y-2">
+                        {items.map((item, idx) => (
+                          <div key={idx} className="flex items-center justify-between py-2 px-3 rounded-lg"
+                            style={{ background: "oklch(0.97 0.005 60)" }}>
+                            <span className="text-sm" style={{ color: "oklch(0.25 0.02 30)" }}>
+                              {item}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      {/* 복사 텍스트 */}
-      {data && data.totalCount > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-bold flex items-center gap-2">
-                <Copy className="w-4 h-4" />
-                복사용 텍스트
-              </CardTitle>
-              <Button size="sm" onClick={handleCopy} className="gap-1.5">
-                <Copy className="w-3.5 h-3.5" />
-                복사하기
-              </Button>
+        {/* 복사용 텍스트 탭 */}
+        <TabsContent value="text">
+          {ordersLoading ? (
+            <LoadingState />
+          ) : (
+            <div className="space-y-4">
+              {/* 제로콜라 총 개수 */}
+              <div className="rounded-2xl p-5" style={{ background: "oklch(0.35 0.08 250)" }}>
+                <div className="text-lg font-semibold" style={{ color: "oklch(0.85 0.15 250)" }}>
+                  제로콜라 총 개수: {orders?.filter(o => o.drinkOption === "제로콜라").length ?? 0}개
+                </div>
+              </div>
+              
+              {/* 복사용 텍스트 */}
+              <div className="rounded-2xl p-6" style={{ background: "oklch(0.97 0.005 60)" }}>
+                <pre className="text-xs whitespace-pre-wrap break-words font-mono" style={{ color: "oklch(0.35 0.02 30)" }}>
+                  {generateCopyText()}
+                </pre>
+              </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-xs bg-muted rounded-lg p-4 whitespace-pre-wrap font-mono text-foreground leading-relaxed overflow-x-auto">
-              {data.copyText}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </TabsContent>
+      </Tabs>
 
-      {/* 전체 신청 목록 */}
-      {todayList && todayList.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-bold">전체 신청 목록</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-2 px-3 font-semibold text-muted-foreground text-xs">이름</th>
-                    <th className="text-left py-2 px-3 font-semibold text-muted-foreground text-xs">식당</th>
-                    <th className="text-left py-2 px-3 font-semibold text-muted-foreground text-xs">메뉴</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {todayList.map((order) => {
-                    const parts: string[] = [];
-                    if (order.mainMenuName) parts.push(order.mainMenuName);
-                    if (order.sideMenuName) parts.push(order.sideMenuName);
-                    if (order.drinkOption) parts.push(order.drinkOption);
-                    if (order.extraOption) parts.push(order.extraOption);
-                    return (
-                      <tr key={order.id} className="hover:bg-muted/50 transition-colors">
-                        <td className="py-2.5 px-3 font-medium text-primary">{order.employeeName}</td>
-                        <td className="py-2.5 px-3 text-foreground">{order.restaurantName}</td>
-                        <td className="py-2.5 px-3 text-foreground">{parts.join(" · ") || "-"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+      {/* 미신청 직원 */}
+      {todayRestaurants && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold mb-4" style={{ color: "oklch(0.20 0.03 250)" }}>
+            ^---^
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Placeholder for not-ordered employees */}
+          </div>
+        </div>
       )}
+    </div>
+  );
+}
+
+// Helper Components
+function StatCard({ label, value, unit, color }: { label: string; value: number; unit: string; color: string }) {
+  return (
+    <div className="rounded-xl p-4" style={{ background: "white", border: "1px solid oklch(0.88 0.01 60)" }}>
+      <div className="text-xs font-medium mb-2" style={{ color: "oklch(0.55 0.02 30)" }}>
+        {label}
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-2xl font-bold" style={{ color }}>
+          {value}
+        </span>
+        <span className="text-xs" style={{ color: "oklch(0.55 0.02 30)" }}>
+          {unit}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="text-center">
+        <div className="w-8 h-8 rounded-full border-2 border-transparent mx-auto mb-4"
+          style={{ borderTopColor: "oklch(0.35 0.08 250)", animation: "spin 1s linear infinite" }} />
+        <div style={{ color: "oklch(0.55 0.02 30)" }}>로딩 중...</div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="text-center">
+        <Users className="w-12 h-12 mx-auto mb-3" style={{ color: "oklch(0.70 0.05 250)" }} />
+        <div style={{ color: "oklch(0.55 0.02 30)" }}>{message}</div>
+      </div>
     </div>
   );
 }

@@ -1,66 +1,74 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "sonner";
+import { Check, RefreshCw, Store, AlertTriangle, Lock, Eye, EyeOff, Lock as LockIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import { Lock, Settings, RotateCcw, Users, Store, Check } from "lucide-react";
-import { Link } from "wouter";
+
+const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  "한식": { bg: "oklch(0.95 0.04 30)", text: "oklch(0.38 0.10 30)", border: "oklch(0.80 0.08 30)" },
+  "양식": { bg: "oklch(0.95 0.04 220)", text: "oklch(0.35 0.10 220)", border: "oklch(0.75 0.08 220)" },
+  "샐러드": { bg: "oklch(0.95 0.05 145)", text: "oklch(0.38 0.12 145)", border: "oklch(0.75 0.10 145)" },
+  "햄버거": { bg: "oklch(0.95 0.05 60)", text: "oklch(0.42 0.12 60)", border: "oklch(0.78 0.10 60)" },
+  "일식": { bg: "oklch(0.95 0.04 200)", text: "oklch(0.36 0.10 200)", border: "oklch(0.76 0.09 200)" },
+};
 
 const ADMIN_PASSWORD = "2101";
 
-function PasswordGate({ children }: { children: React.ReactNode }) {
-  const [input, setInput] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
-  const [error, setError] = useState(false);
+function PasswordPrompt({ onSuccess }: { onSuccess: () => void }) {
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  function handleUnlock() {
-    if (input === ADMIN_PASSWORD) {
-      setUnlocked(true);
-      setError(false);
+  const handleSubmit = () => {
+    if (password === ADMIN_PASSWORD) {
+      onSuccess();
+      toast.success("관리자 페이지에 접근했습니다.");
     } else {
-      setError(true);
-      setInput("");
+      toast.error("비밀번호가 틀렸습니다.");
+      setPassword("");
     }
-  }
-
-  if (unlocked) return <>{children}</>;
+  };
 
   return (
-    <div className="max-w-sm mx-auto mt-12">
-      <Card>
-        <CardHeader className="text-center pb-3">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-            <Lock className="w-6 h-6 text-primary" />
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="flex justify-center mb-4">
+            <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: "oklch(0.35 0.08 250)" }}>
+              <Lock className="w-6 h-6" style={{ color: "oklch(0.85 0.15 250)" }} />
+            </div>
           </div>
-          <CardTitle className="text-lg font-bold">관리자 인증</CardTitle>
-          <p className="text-sm text-muted-foreground">비밀번호를 입력하세요</p>
+          <CardTitle>메뉴선정</CardTitle>
+          <CardDescription>비밀번호를 입력하세요</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            type="password"
-            placeholder="비밀번호"
-            value={input}
-            onChange={(e) => { setInput(e.target.value); setError(false); }}
-            onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-            className={error ? "border-destructive" : ""}
-          />
-          {error && <p className="text-xs text-destructive">비밀번호가 올바르지 않습니다.</p>}
-          <Button className="w-full font-bold" onClick={handleUnlock}>
-            확인
+        <CardContent className="space-y-4">
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="비밀번호"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && handleSubmit()}
+              className="pr-10"
+            />
+            <button
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          <Button
+            onClick={handleSubmit}
+            className="w-full bg-blue-600 hover:bg-blue-700"
+          >
+            접근
           </Button>
         </CardContent>
       </Card>
@@ -70,190 +78,264 @@ function PasswordGate({ children }: { children: React.ReactNode }) {
 
 function AdminContent() {
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.daily.getToday.useQuery();
+  const { data: allRestaurants, isLoading } = trpc.restaurant.list.useQuery();
+  const { data: todaySettings } = trpc.daily.todayRestaurants.useQuery();
+  const { data: todayOrders } = trpc.order.todayAll.useQuery();
 
-  const todayRestaurantIds = useMemo(
-    () => new Set(data?.settings.map((s) => s.restaurantId) ?? []),
-    [data?.settings]
-  );
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [initialized, setInitialized] = useState(false);
+  const [isClosed, setIsClosed] = useState(false);
 
-  // 서버 데이터 로드 후 초기화 (useEffect로 render-phase setState 방지)
   useEffect(() => {
-    if (!initialized && data) {
-      setSelected(new Set(data.settings.map((s) => s.restaurantId)));
-      setInitialized(true);
+    if (todaySettings) {
+      setSelected(new Set(todaySettings.map(s => s.restaurantId)));
+      setIsClosed(todaySettings[0]?.isClosed || false);
     }
-  }, [data, initialized]);
-
-  const categoryMap = new Map((data?.categories ?? []).map((c) => [c.id, c.name]));
-  const grouped = useMemo(() => {
-    const map = new Map<string, Array<{ id: number; name: string; categoryId: number; isActive: boolean; sortOrder: number; createdAt: Date }>>();
-    for (const r of (data?.restaurants ?? [])) {
-      const cat = categoryMap.get(r.categoryId) ?? "기타";
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(r);
-    }
-    return map;
-  }, [data?.restaurants, data?.categories]);
+  }, [todaySettings]);
 
   const setRestaurantsMutation = trpc.daily.setRestaurants.useMutation({
     onSuccess: () => {
-      toast.success("오늘의 식당이 저장되었습니다!");
-      utils.daily.getToday.invalidate();
-      utils.order.summary.invalidate();
+      utils.daily.todayRestaurants.invalidate();
+      toast.success("오늘의 식당이 설정되었습니다!");
     },
-    onError: (err) => toast.error(err.message),
+    onError: () => toast.error("설정 중 오류가 발생했습니다."),
   });
 
   const resetMutation = trpc.daily.reset.useMutation({
     onSuccess: () => {
-      toast.success("하루 초기화 완료!");
-      utils.daily.getToday.invalidate();
-      utils.order.todayList.invalidate();
+      utils.daily.todayRestaurants.invalidate();
+      utils.order.todayAll.invalidate();
       utils.order.summary.invalidate();
       setSelected(new Set());
-      setInitialized(false);
+      toast.success("오늘 데이터가 초기화되었습니다.");
     },
-    onError: (err) => toast.error(err.message),
+    onError: () => toast.error("초기화 중 오류가 발생했습니다."),
   });
 
-  function toggleRestaurant(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const handleToggle = (restaurantId: number) => {
+    const newSelected = new Set(selected);
+    if (newSelected.has(restaurantId)) {
+      newSelected.delete(restaurantId);
+    } else {
+      newSelected.add(restaurantId);
+    }
+    setSelected(newSelected);
+  };
 
-  function handleSave() {
-    setRestaurantsMutation.mutate({
-      restaurantIds: Array.from(selected),
-      password: ADMIN_PASSWORD,
-    });
-  }
+  const handleSave = () => {
+    setRestaurantsMutation.mutate({ restaurantIds: Array.from(selected), password: ADMIN_PASSWORD });
+  };
+
+  const handleReset = () => {
+    resetMutation.mutate({ password: ADMIN_PASSWORD });
+  };
+
+  const toggleClosedMutation = trpc.daily.toggleClosed.useMutation({
+    onSuccess: (data) => {
+      setIsClosed(data.isClosed);
+      toast.success(data.isClosed ? "신청이 마감되었습니다." : "신청이 다시 열렸습니다.");
+    },
+    onError: () => toast.error("상태 변경 중 오류가 발생했습니다."),
+  });
+
+  const handleToggleClosed = () => {
+    toggleClosedMutation.mutate({ password: ADMIN_PASSWORD });
+  };
+
+  const clearOrdersMutation = trpc.order.clearAll.useMutation({
+    onSuccess: () => {
+      utils.order.todayAll.invalidate();
+      utils.order.summary.invalidate();
+      utils.order.getHistory.invalidate();
+      toast.success("모든 주문 데이터가 삭제되었습니다.");
+    },
+    onError: () => toast.error("삭제 중 오류가 발생했습니다.")
+  });
+
+  const handleClearOrders = () => {
+    clearOrdersMutation.mutate({ password: ADMIN_PASSWORD });
+  };
+
+  const groupedByCategory = allRestaurants?.reduce((acc, r) => {
+    if (!acc[r.categoryName]) acc[r.categoryName] = [];
+    acc[r.categoryName].push(r);
+    return acc;
+  }, {} as Record<string, typeof allRestaurants>);
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-black">관리자 페이지</h1>
-        <Badge variant="secondary" className="text-xs">{data?.today}</Badge>
-      </div>
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2" style={{ color: "oklch(0.20 0.03 250)" }}>메뉴선정</h1>
+          <p className="text-muted-foreground">오늘의 식당을 선택하세요</p>
+        </div>
 
-      {/* 관리 링크 */}
-      <div className="grid grid-cols-2 gap-3">
-        <Link href="/admin/employees">
-          <Button variant="outline" className="w-full gap-2 font-semibold bg-background">
-            <Users className="w-4 h-4" />
-            직원 관리
-          </Button>
-        </Link>
-        <Link href="/admin/restaurants">
-          <Button variant="outline" className="w-full gap-2 font-semibold bg-background">
-            <Store className="w-4 h-4" />
-            식당/메뉴 관리
-          </Button>
-        </Link>
-      </div>
-
-      {/* 오늘의 식당 선택 */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            오늘의 식당 선택
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">선택한 식당이 오늘 직원들에게 표시됩니다.</p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
-            </div>
-          ) : (
-            <>
-              {Array.from(grouped.entries()).map(([catName, rests]) => (
-                <div key={catName}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">{catName}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {rests.map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => toggleRestaurant(r.id)}
-                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${
-                          selected.has(r.id)
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                            : "bg-background text-foreground border-border hover:border-primary hover:text-primary"
-                        }`}
-                      >
-                        {selected.has(r.id) && <Check className="w-3.5 h-3.5" />}
-                        {r.name}
-                      </button>
-                    ))}
-                  </div>
+        {/* Closed Status Alert */}
+        {isClosed && (
+          <Card className="mb-6" style={{ background: "oklch(0.95 0.08 30)", border: "1px solid oklch(0.75 0.15 30)" }}>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <LockIcon className="w-5 h-5 flex-shrink-0" style={{ color: "oklch(0.55 0.18 30)" }} />
+                <div>
+                  <p className="font-semibold" style={{ color: "oklch(0.30 0.10 30)" }}>신청이 마감되었습니다</p>
+                  <p className="text-sm" style={{ color: "oklch(0.50 0.08 30)" }}>직원들이 더 이상 신청할 수 없습니다. &quot;오픈&quot; 버튼으로 다시 열 수 있습니다.</p>
                 </div>
-              ))}
-              <div className="pt-2 flex gap-2">
-                <Button
-                  className="flex-1 font-bold"
-                  onClick={handleSave}
-                  disabled={setRestaurantsMutation.isPending}
-                >
-                  {setRestaurantsMutation.isPending ? "저장 중..." : `선택 저장 (${selected.size}곳)`}
-                </Button>
               </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* 하루 초기화 */}
-      <Card className="border-destructive/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold flex items-center gap-2 text-destructive">
-            <RotateCcw className="w-4 h-4" />
-            하루 초기화
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">오늘의 식당 설정과 모든 주문을 초기화합니다.</p>
-        </CardHeader>
-        <CardContent>
+        {/* Status */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Store className="w-5 h-5" style={{ color: "oklch(0.55 0.18 250)" }} />
+              오늘의 식당 ({selected.size}개 선택)
+            </CardTitle>
+            <CardDescription>
+              {todayOrders && todayOrders.length > 0 && `현재 ${todayOrders.length}명이 신청했습니다`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isLoading ? (
+              <div className="text-center py-8 text-muted-foreground">로딩 중...</div>
+            ) : (
+              <>
+                {groupedByCategory && Object.entries(groupedByCategory).map(([category, restaurants]) => (
+                  <div key={category}>
+                    <h3 className="font-semibold mb-3 text-sm" style={{ color: CATEGORY_COLORS[category]?.text }}>
+                      {category}
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                      {restaurants?.map(r => (
+                        <button
+                          key={r.id}
+                          onClick={() => handleToggle(r.id)}
+                          className="p-3 rounded-lg text-left transition-all"
+                          style={{
+                            background: selected.has(r.id) ? CATEGORY_COLORS[category]?.bg : "oklch(0.97 0.01 250)",
+                            border: `2px solid ${selected.has(r.id) ? CATEGORY_COLORS[category]?.border : "oklch(0.88 0.01 60)"}`,
+                            color: selected.has(r.id) ? CATEGORY_COLORS[category]?.text : "oklch(0.50 0.03 250)",
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{r.name}</span>
+                            {selected.has(r.id) && <Check className="w-5 h-5" />}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Actions */}
+        <div className="flex gap-3 flex-wrap">
+          <Button
+            onClick={handleSave}
+            disabled={setRestaurantsMutation.isPending}
+            className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700"
+          >
+            {setRestaurantsMutation.isPending ? "저장 중..." : "저장"}
+          </Button>
+
+          <Button
+            onClick={handleToggleClosed}
+            disabled={toggleClosedMutation.isPending}
+            className={`flex-1 min-w-[120px] ${isClosed ? "bg-green-600 hover:bg-green-700" : "bg-orange-600 hover:bg-orange-700"}`}
+          >
+            {toggleClosedMutation.isPending ? (isClosed ? "오픈 중..." : "마감 중...") : (isClosed ? "오픈" : "마감")}
+          </Button>
+
+          {isClosed && (
+            <Button
+              onClick={handleToggleClosed}
+              disabled={toggleClosedMutation.isPending}
+              variant="outline"
+              className="flex-1 min-w-[120px] border-green-600 text-green-700 hover:bg-green-50"
+            >
+              {toggleClosedMutation.isPending ? "마감 해제 중..." : "마감 해제"}
+            </Button>
+          )}
+
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" className="w-full font-bold gap-2">
-                <RotateCcw className="w-4 h-4" />
-                오늘 데이터 전체 초기화
+              <Button
+                variant="outline"
+                className="flex-1 min-w-[120px]"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                오늘 초기화
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>하루 초기화</AlertDialogTitle>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-orange-500" />
+                  오늘 데이터 초기화
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  오늘({data?.today})의 식당 설정과 모든 주문이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+                  이 작업은 되돌릴 수 없습니다. 오늘의 모든 신청 데이터가 삭제됩니다.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>취소</AlertDialogCancel>
                 <AlertDialogAction
-                  className="bg-destructive text-white hover:bg-destructive/90"
-                  onClick={() => resetMutation.mutate({ password: ADMIN_PASSWORD })}
+                  onClick={handleReset}
+                  className="bg-destructive hover:bg-destructive/90"
                 >
                   초기화
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        </CardContent>
-      </Card>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="flex-1 min-w-[120px] border-red-600 text-red-700 hover:bg-red-50"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                전체 삭제
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                  모든 주문 데이터 삭제
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  ⚠️ 주의: 이 작업은 되돌릴 수 없습니다. 모든 주문 이력 데이터가 영구 삭제됩니다.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>취소</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleClearOrders}
+                  disabled={clearOrdersMutation.isPending}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {clearOrdersMutation.isPending ? "삭제 중..." : "삭제"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
     </div>
   );
 }
 
 export default function AdminPage() {
-  return (
-    <PasswordGate>
-      <AdminContent />
-    </PasswordGate>
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  if (!isAuthenticated) {
+    return <PasswordPrompt onSuccess={() => setIsAuthenticated(true)} />;
+  }
+
+  return <AdminContent />;
 }

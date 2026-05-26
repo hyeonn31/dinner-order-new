@@ -1,48 +1,48 @@
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { sql, eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { employees, restaurants, menuItems, dailySettings, orders } from "../drizzle/schema";
 import {
-  addEmployee,
-  addMenuItem,
-  addRestaurant,
-  deleteEmployee,
-  deleteMenuItem,
-  deleteOrder,
-  deleteRestaurant,
-  getAllCategories,
-  getAllEmployees,
-  getAllRestaurants,
-  getDailySettings,
+  getAllRestaurantsWithCategories,
+  getRestaurantCategories,
+  insertRestaurant,
   getMenusByRestaurant,
-  getMenusByRestaurants,
-  getOrdersByDate,
-  resetDay,
-  setDailyRestaurants,
+  getAllEmployees,
+  getTodaySettings,
+  setTodayRestaurants,
+  getTodayOrders,
+  getOrderByEmployee,
+  getOrderByEmployeeWithRestaurant,
   upsertOrder,
+  deleteOrder,
+  resetTodayData,
+  getOrderSummary,
+  getOrderHistory,
+  getDb,
 } from "./db";
 
 const ADMIN_PASSWORD = "2101";
 
-function getTodayKST(): string {
-  const now = new Date();
-  // KST = UTC+9
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return kst.toISOString().slice(0, 10);
+function adminProcedure(password: string) {
+  if (password !== ADMIN_PASSWORD) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid admin password" });
+  }
 }
 
-function checkPassword(password: string) {
-  if (password !== ADMIN_PASSWORD) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "비밀번호가 올바르지 않습니다." });
-  }
+function getToday() {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10);
 }
 
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -50,247 +50,187 @@ export const appRouter = router({
     }),
   }),
 
-  // ─── 식당 카테고리 ────────────────────────────────────────────────────────
-  category: router({
-    list: publicProcedure.query(async () => {
-      return getAllCategories();
-    }),
-  }),
-
-  // ─── 식당 ─────────────────────────────────────────────────────────────────
+  // ─── 식당 ─────────────────────────────────────────────────
   restaurant: router({
-    list: publicProcedure.query(async () => {
-      const [cats, rests] = await Promise.all([getAllCategories(), getAllRestaurants()]);
-      return { categories: cats, restaurants: rests };
+    listCategories: publicProcedure.query(async () => {
+      return await getRestaurantCategories();
     }),
-
+    list: publicProcedure.query(async () => {
+      return await getAllRestaurantsWithCategories();
+    }),
     menus: publicProcedure
       .input(z.object({ restaurantId: z.number() }))
       .query(async ({ input }) => {
-        return getMenusByRestaurant(input.restaurantId);
+        return await getMenusByRestaurant(input.restaurantId);
       }),
-
-    addRestaurant: publicProcedure
-      .input(z.object({ categoryId: z.number(), name: z.string().min(1), password: z.string() }))
-      .mutation(async ({ input }) => {
-        checkPassword(input.password);
-        await addRestaurant(input.categoryId, input.name);
-        return { success: true };
-      }),
-
-    deleteRestaurant: publicProcedure
-      .input(z.object({ id: z.number(), password: z.string() }))
-      .mutation(async ({ input }) => {
-        checkPassword(input.password);
-        await deleteRestaurant(input.id);
-        return { success: true };
-      }),
-
-    addMenu: publicProcedure
-      .input(
-        z.object({
-          restaurantId: z.number(),
-          name: z.string().min(1),
-          itemType: z.enum(["main", "side", "drink", "option"]),
-          password: z.string(),
-        })
-      )
-      .mutation(async ({ input }) => {
-        checkPassword(input.password);
-        await addMenuItem(input.restaurantId, input.name, input.itemType);
-        return { success: true };
-      }),
-
-    deleteMenu: publicProcedure
-      .input(z.object({ id: z.number(), password: z.string() }))
-      .mutation(async ({ input }) => {
-        checkPassword(input.password);
-        await deleteMenuItem(input.id);
-        return { success: true };
-      }),
+    addRestaurant: publicProcedure.input(z.object({ name: z.string().min(1), categoryId: z.number(), password: z.string() })).mutation(async ({ input }) => {
+      adminProcedure(input.password);
+      try {
+        return await insertRestaurant({ name: input.name.trim(), categoryId: input.categoryId });
+      } catch (error) {
+        if (error instanceof Error && error.message === "INVALID_CATEGORY") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "유효하지 않은 카테고리입니다" });
+        }
+        if (error instanceof Error && error.message === "Database not available") {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "데이터베이스에 연결할 수 없습니다" });
+        }
+        throw error;
+      }
+    }),
+    deleteRestaurant: publicProcedure.input(z.object({ restaurantId: z.number(), password: z.string() })).mutation(async ({ input }) => {
+      adminProcedure(input.password);
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      await db.delete(restaurants).where(eq(restaurants.id, input.restaurantId));
+      return { success: true };
+    }),
+    addMenu: publicProcedure.input(z.object({ restaurantId: z.number(), name: z.string().min(1), itemType: z.string(), password: z.string() })).mutation(async ({ input }) => {
+      adminProcedure(input.password);
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const existing = await db.select().from(menuItems).where(eq(menuItems.restaurantId, input.restaurantId)).limit(1);
+      const isDuplicate = existing.some(m => m.name === input.name && m.itemType === input.itemType);
+      if (isDuplicate) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "이미 존재하는 메뉴입니다" });
+      }
+      await db.insert(menuItems).values({ restaurantId: input.restaurantId, name: input.name, itemType: input.itemType as any });
+      return { success: true };
+    }),
+    deleteMenu: publicProcedure.input(z.object({ menuId: z.number(), password: z.string() })).mutation(async ({ input }) => {
+      adminProcedure(input.password);
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      await db.delete(menuItems).where(eq(menuItems.id, input.menuId));
+      return { success: true };
+    }),
   }),
 
-  // ─── 직원 ─────────────────────────────────────────────────────────────────
+  // ─── 직원 ─────────────────────────────────────────────────
   employee: router({
     list: publicProcedure.query(async () => {
-      return getAllEmployees();
+      return await getAllEmployees();
     }),
-
-    add: publicProcedure
-      .input(z.object({ nickname: z.string().min(1), password: z.string() }))
-      .mutation(async ({ input }) => {
-        checkPassword(input.password);
-        await addEmployee(input.nickname);
-        return { success: true };
-      }),
-
-    delete: publicProcedure
-      .input(z.object({ id: z.number(), password: z.string() }))
-      .mutation(async ({ input }) => {
-        checkPassword(input.password);
-        await deleteEmployee(input.id);
-        return { success: true };
-      }),
+    add: publicProcedure.input(z.object({ nickname: z.string().min(1), password: z.string() })).mutation(async ({ input }) => {
+      adminProcedure(input.password);
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const maxSort = await db.select({ max: sql<number>`MAX(${employees.sortOrder})` }).from(employees);
+      const nextSort = (maxSort[0]?.max || 0) + 1;
+      await db.insert(employees).values({ nickname: input.nickname, sortOrder: nextSort, isActive: true });
+      return { success: true };
+    }),
+    delete: publicProcedure.input(z.object({ employeeId: z.number(), password: z.string() })).mutation(async ({ input }) => {
+      adminProcedure(input.password);
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      await db.update(employees).set({ isActive: false }).where(eq(employees.id, input.employeeId));
+      return { success: true };
+    }),
   }),
 
-  // ─── 일일 설정 ────────────────────────────────────────────────────────────
+  // ─── 일일 설정 ─────────────────────────────────────────────
   daily: router({
-    getToday: publicProcedure.query(async () => {
-      const today = getTodayKST();
-      const settings = await getDailySettings(today);
-      const restaurantIds = settings.map((s) => s.restaurantId);
-      const [cats, rests, menus] = await Promise.all([
-        getAllCategories(),
-        getAllRestaurants(),
-        getMenusByRestaurants(restaurantIds),
-      ]);
-      return { today, settings, categories: cats, restaurants: rests, menus };
+    todayRestaurants: publicProcedure.query(async () => {
+      const today = getToday();
+      return await getTodaySettings(today);
     }),
-
     setRestaurants: publicProcedure
       .input(z.object({ restaurantIds: z.array(z.number()), password: z.string() }))
       .mutation(async ({ input }) => {
-        checkPassword(input.password);
-        const today = getTodayKST();
-        await setDailyRestaurants(today, input.restaurantIds);
-        return { success: true };
+        adminProcedure(input.password);
+        const today = getToday();
+        await setTodayRestaurants(today, input.restaurantIds);
+        return { success: true, today };
       }),
-
     reset: publicProcedure
       .input(z.object({ password: z.string() }))
       .mutation(async ({ input }) => {
-        checkPassword(input.password);
-        const today = getTodayKST();
-        await resetDay(today);
+        adminProcedure(input.password);
+        const today = getToday();
+        await resetTodayData(today);
         return { success: true };
+      }),
+    toggleClosed: publicProcedure
+      .input(z.object({ password: z.string() }))
+      .mutation(async ({ input }) => {
+        adminProcedure(input.password);
+        const today = getToday();
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const existing = await db.select().from(dailySettings).where(sql`DATE(settingDate) = ${today}`).limit(1);
+        if (existing.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "오늘의 설정이 없습니다" });
+        }
+        const current = existing[0];
+        await db.update(dailySettings).set({ isClosed: !current.isClosed }).where(eq(dailySettings.id, current.id));
+        return { success: true, isClosed: !current.isClosed };
       }),
   }),
 
-  // ─── 주문 ─────────────────────────────────────────────────────────────────
+  // ─── 주문 ─────────────────────────────────────────────────
   order: router({
-    todayList: publicProcedure.query(async () => {
-      const today = getTodayKST();
-      const [orderList, employees, settings] = await Promise.all([
-        getOrdersByDate(today),
-        getAllEmployees(),
-        getDailySettings(today),
-      ]);
-      const employeeMap = new Map(employees.map((e) => [e.id, e.nickname]));
-      const settingRestaurantIds = new Set(settings.map((s) => s.restaurantId));
-      const rests = await getAllRestaurants();
-      const restaurantMap = new Map(rests.map((r) => [r.id, r.name]));
-      return orderList.map((o) => ({
-        ...o,
-        employeeName: employeeMap.get(o.employeeId) ?? "알 수 없음",
-        restaurantName: restaurantMap.get(o.restaurantId) ?? "알 수 없음",
-      }));
+    todayAll: publicProcedure.query(async () => {
+      const today = getToday();
+      return await getTodayOrders(today);
     }),
-
     myOrder: publicProcedure
       .input(z.object({ employeeId: z.number() }))
       .query(async ({ input }) => {
-        const today = getTodayKST();
-        const orderList = await getOrdersByDate(today);
-        return orderList.find((o) => o.employeeId === input.employeeId) ?? null;
+        const today = getToday();
+        return await getOrderByEmployee(today, input.employeeId);
       }),
-
+    check: publicProcedure
+      .input(z.object({ employeeId: z.number() }))
+      .query(async ({ input }) => {
+        const today = getToday();
+        const existing = await getOrderByEmployeeWithRestaurant(today, input.employeeId);
+        return existing;
+      }),
     submit: publicProcedure
-      .input(
-        z.object({
-          employeeId: z.number(),
-          restaurantId: z.number(),
-          mainMenuId: z.number().optional(),
-          mainMenuName: z.string().optional(),
-          sideMenuId: z.number().optional(),
-          sideMenuName: z.string().optional(),
-          drinkOption: z.string().optional(),
-          extraOption: z.string().optional(),
-          note: z.string().optional(),
-        })
-      )
+      .input(z.object({
+        employeeId: z.number(),
+        restaurantId: z.number(),
+        mainMenuName: z.string().optional(),
+        sideMenuName: z.string().optional(),
+        drinkOption: z.string().optional(),
+        extraOption: z.string().optional(),
+        note: z.string().optional(),
+      }))
       .mutation(async ({ input }) => {
-        const today = getTodayKST();
-        // 오늘 설정된 식당인지 확인
-        const settings = await getDailySettings(today);
-        const validIds = new Set(settings.map((s) => s.restaurantId));
-        if (!validIds.has(input.restaurantId)) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "오늘 선택된 식당이 아닙니다." });
-        }
-        await upsertOrder({ ...input, orderDate: today });
-        return { success: true };
+        const today = getToday();
+        const result = await upsertOrder({ today, ...input });
+        return { success: true, ...result };
       }),
-
     cancel: publicProcedure
       .input(z.object({ employeeId: z.number() }))
       .mutation(async ({ input }) => {
-        const today = getTodayKST();
-        await deleteOrder(input.employeeId, today);
+        const today = getToday();
+        await deleteOrder(today, input.employeeId);
         return { success: true };
       }),
-
     summary: publicProcedure.query(async () => {
-      const today = getTodayKST();
-      const [orderList, employees, rests] = await Promise.all([
-        getOrdersByDate(today),
-        getAllEmployees(),
-        getAllRestaurants(),
-      ]);
-      const employeeMap = new Map(employees.map((e) => [e.id, e.nickname]));
-      const restaurantMap = new Map(rests.map((r) => [r.id, r.name]));
-
-      // 식당별 그룹핑
-      const grouped: Record<number, {
-        restaurantName: string;
-        orders: Array<{
-          employeeName: string;
-          mainMenuName: string | null;
-          sideMenuName: string | null;
-          drinkOption: string | null;
-          extraOption: string | null;
-          note: string | null;
-        }>;
-      }> = {};
-
-      for (const o of orderList) {
-        if (!grouped[o.restaurantId]) {
-          grouped[o.restaurantId] = {
-            restaurantName: restaurantMap.get(o.restaurantId) ?? "알 수 없음",
-            orders: [],
-          };
-        }
-        grouped[o.restaurantId].orders.push({
-          employeeName: employeeMap.get(o.employeeId) ?? "알 수 없음",
-          mainMenuName: o.mainMenuName ?? null,
-          sideMenuName: o.sideMenuName ?? null,
-          drinkOption: o.drinkOption ?? null,
-          extraOption: o.extraOption ?? null,
-          note: o.note ?? null,
-        });
-      }
-
-      // 복사용 텍스트 생성
-      let copyText = `📋 ${today} 주문 취합\n\n`;
-      for (const group of Object.values(grouped)) {
-        copyText += `【${group.restaurantName}】 ${group.orders.length}명\n`;
-        for (const ord of group.orders) {
-          const parts: string[] = [];
-          if (ord.mainMenuName) parts.push(ord.mainMenuName);
-          if (ord.sideMenuName) parts.push(`사이드: ${ord.sideMenuName}`);
-          if (ord.drinkOption) parts.push(`음료: ${ord.drinkOption}`);
-          if (ord.extraOption) parts.push(ord.extraOption);
-          if (ord.note) parts.push(`(${ord.note})`);
-          copyText += `  - ${ord.employeeName}: ${parts.join(", ") || "메뉴 미선택"}\n`;
-        }
-        copyText += "\n";
-      }
-
-      return {
-        today,
-        totalCount: orderList.length,
-        grouped: Object.values(grouped),
-        copyText,
-      };
+      const today = getToday();
+      return await getOrderSummary(today);
     }),
+    getHistory: publicProcedure
+      .input(z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+        employeeId: z.number().optional(),
+        restaurantId: z.number().optional(),
+      }))
+      .query(async ({ input }) => {
+        return await getOrderHistory(input);
+      }),
+    clearAll: publicProcedure
+      .input(z.object({ password: z.string() }))
+      .mutation(async ({ input }) => {
+        adminProcedure(input.password);
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database connection failed" });
+        await db.delete(orders);
+        return { success: true };
+      }),
   }),
 });
 

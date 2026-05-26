@@ -27,7 +27,7 @@ export type InsertUser = typeof users.$inferInsert;
 // 식당 카테고리
 export const restaurantCategories = mysqlTable("restaurant_categories", {
   id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 50 }).notNull(),
+  name: varchar("name", { length: 50 }).notNull(), // 한식, 양식, 샐러드, 햄버거, 일식
   sortOrder: int("sortOrder").default(0).notNull(),
 });
 
@@ -78,14 +78,13 @@ export const orders = mysqlTable("orders", {
   mainMenuName: varchar("mainMenuName", { length: 300 }),
   sideMenuId: int("sideMenuId"),
   sideMenuName: varchar("sideMenuName", { length: 300 }),
-  drinkOption: varchar("drinkOption", { length: 100 }),
-  extraOption: varchar("extraOption", { length: 300 }),
-  note: text("note"),
+  drinkOption: varchar("drinkOption", { length: 100 }), // 제로콜라, 펩시제로 등
+  extraOption: varchar("extraOption", { length: 300 }), // 기타 추가 옵션
+  note: text("note"), // 요청사항
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
-export type RestaurantCategory = typeof restaurantCategories.$inferSelect;
 export type Restaurant = typeof restaurants.$inferSelect;
 export type MenuItem = typeof menuItems.$inferSelect;
 export type Employee = typeof employees.$inferSelect;

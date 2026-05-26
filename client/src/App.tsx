@@ -4,24 +4,28 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import AppLayout from "./components/AppLayout";
 import Home from "./pages/Home";
+import AdminPage from "./pages/AdminPage";
 import OrderPage from "./pages/OrderPage";
 import SummaryPage from "./pages/SummaryPage";
-import AdminPage from "./pages/AdminPage";
+import EmployeeDetailPage from "./pages/EmployeeDetailPage";
 import EmployeeManagePage from "./pages/EmployeeManagePage";
 import RestaurantManagePage from "./pages/RestaurantManagePage";
+import { HistoryPage } from "./pages/HistoryPage";
+import AppLayout from "./components/AppLayout";
 
 function Router() {
   return (
     <AppLayout>
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/admin" component={AdminPage} />
         <Route path="/order" component={OrderPage} />
         <Route path="/summary" component={SummaryPage} />
-        <Route path="/admin" component={AdminPage} />
-        <Route path="/admin/employees" component={EmployeeManagePage} />
-        <Route path="/admin/restaurants" component={RestaurantManagePage} />
+        <Route path="/employee-detail" component={EmployeeDetailPage} />
+        <Route path="/history" component={HistoryPage} />
+        <Route path="/employee-manage" component={EmployeeManagePage} />
+        <Route path="/restaurant-manage" component={RestaurantManagePage} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
@@ -34,7 +38,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <Toaster />
+          <Toaster richColors position="top-center" />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

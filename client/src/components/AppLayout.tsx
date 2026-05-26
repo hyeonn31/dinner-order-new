@@ -1,61 +1,102 @@
 import { Link, useLocation } from "wouter";
+import { UtensilsCrossed, Settings, ClipboardList, BarChart3, Users, Utensils, History } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { UtensilsCrossed } from "lucide-react";
+import { useState } from "react";
 
 const navItems = [
-  { href: "/", label: "홈" },
-  { href: "/order", label: "식사 신청" },
-  { href: "/summary", label: "주문 취합" },
-  { href: "/admin", label: "관리자" },
+  { path: "/order", label: "저녁 신청", icon: UtensilsCrossed, desc: "메뉴를 선택하세요" },
+  { path: "/employee-detail", label: "직원별 상세", icon: Users, desc: "오늘 주문 메뉴 확인" },
+  { path: "/admin", label: "메뉴선정", icon: Settings, desc: "식당 설정" },
+  { path: "/summary", label: "주문 취합", icon: BarChart3, desc: "주문 현황 확인" },
+  { path: "/history", label: "주문 이력", icon: History, desc: "과거 주문 조회" },
+];
+
+const manageItems = [
+  { path: "/employee-manage", label: "직원 관리" },
+  { path: "/restaurant-manage", label: "식당/메뉴 관리" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const [showManageMenu, setShowManageMenu] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* 헤더 */}
-      <header className="bg-primary text-primary-foreground shadow-md sticky top-0 z-50">
-        <div className="container">
-          <div className="flex items-center h-14 gap-6">
-            <Link href="/" className="flex items-center gap-2 font-black text-lg tracking-tight shrink-0">
-              <UtensilsCrossed className="w-5 h-5" />
-              <span>저녁식사 신청</span>
+    <div className="min-h-screen flex flex-col" style={{ background: "oklch(0.97 0.01 250)" }}>
+      {/* Header */}
+      <header style={{ background: "oklch(0.35 0.08 250)" }} className="sticky top-0 z-50 shadow-lg">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-5 group">
+              <img src="/manus-storage/able-logo_499c3efc.png" alt="ABLE Logo" className="h-10 shrink-0" />
+              <div>
+                <div className="font-semibold text-white text-sm tracking-wide" style={{ fontFamily: "'Noto Sans KR', sans-serif", fontWeight: 600 }}>
+                  Dinner Order
+                </div>
+                <div className="text-xs" style={{ color: "oklch(0.70 0.05 250)" }}>저녁식사 신청 시스템</div>
+              </div>
             </Link>
-            <nav className="flex items-center gap-1 overflow-x-auto">
-              {navItems.map((item) => {
-                const isActive =
-                  item.href === "/"
-                    ? location === "/"
-                    : location.startsWith(item.href);
+
+            {/* Navigation */}
+            <nav className="flex items-center gap-1">
+              {navItems.map(({ path, label, icon: Icon }) => {
+                const isActive = location === path || (path === "/order" && location === "/");
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                      isActive
-                        ? "bg-primary-foreground/20 text-primary-foreground"
-                        : "text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
-                    )}
-                  >
-                    {item.label}
+                  <Link key={path} href={path}>
+                    <button
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                        isActive
+                          ? "text-white"
+                          : "text-white/60 hover:text-white/90 hover:bg-white/5"
+                      )}
+                      style={isActive ? {
+                        background: "oklch(0.55 0.18 250 / 0.2)",
+                        border: "1px solid oklch(0.55 0.18 250 / 0.35)",
+                        color: "oklch(0.85 0.15 250)"
+                      } : {}}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span className="hidden sm:inline">{label}</span>
+                    </button>
                   </Link>
                 );
               })}
+              
+              {/* Manage Dropdown */}
+              <div className="relative" onMouseEnter={() => setShowManageMenu(true)} onMouseLeave={() => setShowManageMenu(false)}>
+                <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/5 transition-all duration-200">
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden sm:inline">관리</span>
+                </button>
+                {showManageMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl z-50">
+                    {manageItems.map(({ path, label }) => (
+                      <Link key={path} href={path}>
+                        <div className="px-4 py-3 hover:bg-blue-50 text-gray-800 text-sm cursor-pointer first:rounded-t-lg last:rounded-b-lg border-b last:border-b-0 border-gray-100">
+                          {label}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             </nav>
           </div>
         </div>
+
+        {/* Blue accent line */}
+        <div style={{ background: "linear-gradient(90deg, transparent, oklch(0.55 0.18 250 / 0.6), transparent)", height: "1px" }} />
       </header>
 
-      {/* 메인 콘텐츠 */}
+      {/* Main */}
       <main className="flex-1">
-        <div className="container py-6">{children}</div>
+        {children}
       </main>
 
-      {/* 푸터 */}
-      <footer className="border-t border-border bg-muted/50 py-3 text-center text-xs text-muted-foreground">
-        저녁식사 신청 시스템 &copy; {new Date().getFullYear()}
+      {/* Footer */}
+      <footer className="py-4 text-center text-xs" style={{ color: "oklch(0.50 0.03 250)", borderTop: "1px solid oklch(0.90 0.01 250)" }}>
+        저녁식사 신청 시스템 &mdash; 매일 오후 4시~6시 운영
       </footer>
     </div>
   );

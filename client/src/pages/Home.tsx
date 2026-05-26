@@ -1,105 +1,105 @@
-import { trpc } from "@/lib/trpc";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { UtensilsCrossed, ChevronRight, Users, ClipboardList } from "lucide-react";
 import { Link } from "wouter";
+import { UtensilsCrossed, Settings, BarChart3, ArrowRight, Clock } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 export default function Home() {
-  const { data, isLoading } = trpc.daily.getToday.useQuery();
+  const { data: todayRestaurants } = trpc.daily.todayRestaurants.useQuery();
+  const { data: orders } = trpc.order.todayAll.useQuery();
 
-  const todayRestaurantIds = new Set(data?.settings.map((s) => s.restaurantId) ?? []);
-  const todayRestaurants = (data?.restaurants ?? []).filter((r) => todayRestaurantIds.has(r.id));
-
-  const categoryMap = new Map((data?.categories ?? []).map((c) => [c.id, c.name]));
-
-  // 카테고리별 그룹핑
-  const grouped = new Map<string, typeof todayRestaurants>();
-  for (const r of todayRestaurants) {
-    const catName = categoryMap.get(r.categoryId) ?? "기타";
-    if (!grouped.has(catName)) grouped.set(catName, []);
-    grouped.get(catName)!.push(r);
-  }
+  const hasSetup = todayRestaurants && todayRestaurants.length > 0;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* 히어로 */}
-      <div className="rounded-2xl bg-primary text-primary-foreground p-6 shadow-lg">
-        <div className="flex items-center gap-3 mb-2">
-          <UtensilsCrossed className="w-7 h-7" />
-          <h1 className="text-2xl font-black tracking-tight">오늘의 저녁식사</h1>
+    <div className="max-w-4xl mx-auto px-4 py-12">
+      {/* Hero */}
+      <div className="text-center mb-12">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-6"
+          style={{ background: "oklch(0.88 0.07 75 / 0.3)", color: "oklch(0.55 0.18 250)", border: "1px solid oklch(0.72 0.12 75 / 0.3)" }}>
+          <Clock className="w-4 h-4" />
+          매일 오후 5시 ~ 6시 운영
         </div>
-        <p className="text-primary-foreground/80 text-sm font-medium">
-          {data?.today ?? "로딩 중..."} · 오늘 선택된 식당을 확인하고 메뉴를 신청하세요
-        </p>
+        <h1 className="text-4xl font-bold mb-3" style={{ color: "oklch(0.20 0.03 250)" }}>
+          저녁식사 신청 시스템
+        </h1>
+
       </div>
 
-      {/* 오늘의 식당 */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary inline-block" />
-            오늘의 식당
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
+      {/* Status Card */}
+      <div className="rounded-2xl p-6 mb-8 text-center"
+        style={{
+          background: hasSetup ? "oklch(0.96 0.04 145 / 0.3)" : "oklch(0.97 0.02 60)",
+          border: `1px solid ${hasSetup ? "oklch(0.65 0.15 145 / 0.3)" : "oklch(0.88 0.01 60)"}`,
+        }}>
+        {hasSetup ? (
+          <>
+            <div className="text-sm font-medium mb-2" style={{ color: "oklch(0.45 0.12 145)" }}>
+              오늘의 식당이 설정되었습니다
             </div>
-          ) : todayRestaurants.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <UtensilsCrossed className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">아직 오늘의 식당이 선택되지 않았습니다.</p>
-              <p className="text-xs mt-1">관리자 페이지에서 식당을 선택해 주세요.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {Array.from(grouped.entries()).map(([catName, rests]) => (
-                <div key={catName}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">{catName}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {rests.map((r) => (
-                      <Badge key={r.id} variant="secondary" className="text-sm px-3 py-1 font-medium">
-                        {r.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+            <div className="flex flex-wrap gap-2 justify-center">
+              {todayRestaurants.map(r => (
+                <span key={r.restaurantId} className="px-3 py-1 rounded-full text-sm font-medium"
+                  style={{ background: "oklch(0.35 0.08 250)", color: "oklch(0.85 0.15 250)" }}>
+                  {r.restaurantName}
+                </span>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 빠른 이동 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Link href="/order">
-          <Button variant="default" className="w-full h-14 text-base font-bold justify-between px-5 shadow-sm">
-            <span className="flex items-center gap-2">
-              <UtensilsCrossed className="w-5 h-5" />
-              식사 신청하기
-            </span>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </Link>
-        <Link href="/summary">
-          <Button variant="outline" className="w-full h-14 text-base font-bold justify-between px-5 bg-background shadow-sm border-border">
-            <span className="flex items-center gap-2">
-              <ClipboardList className="w-5 h-5" />
-              주문 현황 보기
-            </span>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </Link>
+            {orders && orders.length > 0 && (
+              <div className="mt-3 text-sm" style={{ color: "oklch(0.45 0.12 145)" }}>
+                현재 <strong>{orders.length}명</strong>이 신청 완료
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-sm" style={{ color: "oklch(0.50 0.03 250)" }}>
+            아직 오늘의 식당이 설정되지 않았습니다. 관리자 페이지에서 식당을 선택해 주세요.
+          </div>
+        )}
       </div>
 
-      {/* 관리 링크 */}
-      <div className="flex gap-3 justify-center text-sm">
-        <Link href="/admin" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-          <Users className="w-3.5 h-3.5" />
-          관리자 페이지
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Link href="/order">
+          <div className="group rounded-2xl p-6 cursor-pointer transition-all duration-200 hover:-translate-y-1"
+            style={{ background: "white", border: "1px solid oklch(0.88 0.01 60)", boxShadow: "0 2px 12px oklch(0.18 0.02 30 / 0.06)" }}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
+              style={{ background: "oklch(0.35 0.08 250)" }}>
+              <UtensilsCrossed className="w-6 h-6" style={{ color: "oklch(0.55 0.18 250)" }} />
+            </div>
+            <h3 className="font-semibold text-base mb-1" style={{ color: "oklch(0.20 0.03 250)" }}>저녁 신청</h3>
+            <p className="text-sm mb-4" style={{ color: "oklch(0.50 0.03 250)" }}>메뉴를 선택하고 신청하세요</p>
+            <div className="flex items-center gap-1 text-sm font-medium" style={{ color: "oklch(0.55 0.18 250)" }}>
+              신청하기 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/admin">
+          <div className="group rounded-2xl p-6 cursor-pointer transition-all duration-200 hover:-translate-y-1"
+            style={{ background: "white", border: "1px solid oklch(0.88 0.01 60)", boxShadow: "0 2px 12px oklch(0.18 0.02 30 / 0.06)" }}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
+              style={{ background: "oklch(0.35 0.08 250)" }}>
+              <Settings className="w-6 h-6" style={{ color: "oklch(0.55 0.18 250)" }} />
+            </div>
+            <h3 className="font-semibold text-base mb-1" style={{ color: "oklch(0.20 0.03 250)" }}>관리자</h3>
+            <p className="text-sm mb-4" style={{ color: "oklch(0.50 0.03 250)" }}>오늘의 식당을 설정하세요</p>
+            <div className="flex items-center gap-1 text-sm font-medium" style={{ color: "oklch(0.55 0.18 250)" }}>
+              설정하기 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/summary">
+          <div className="group rounded-2xl p-6 cursor-pointer transition-all duration-200 hover:-translate-y-1"
+            style={{ background: "white", border: "1px solid oklch(0.88 0.01 60)", boxShadow: "0 2px 12px oklch(0.18 0.02 30 / 0.06)" }}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
+              style={{ background: "oklch(0.35 0.08 250)" }}>
+              <BarChart3 className="w-6 h-6" style={{ color: "oklch(0.55 0.18 250)" }} />
+            </div>
+            <h3 className="font-semibold text-base mb-1" style={{ color: "oklch(0.20 0.03 250)" }}>주문 취합</h3>
+            <p className="text-sm mb-4" style={{ color: "oklch(0.50 0.03 250)" }}>신청 현황을 확인하세요</p>
+            <div className="flex items-center gap-1 text-sm font-medium" style={{ color: "oklch(0.55 0.18 250)" }}>
+              확인하기 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </div>
         </Link>
       </div>
     </div>
