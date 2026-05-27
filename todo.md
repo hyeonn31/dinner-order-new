@@ -29,3 +29,22 @@
 - [x] 메뉴 신청 CRUD 테스트
 - [x] 주문 취합 로직 테스트
 - [x] 비밀번호 보호 테스트
+
+## 인증 기능 (회원가입/로그인/역할 기반 접근 제어)
+
+- [x] DB: accounts 테이블 추가 (username, passwordHash, nickname, role, employeeId)
+- [x] DB: admin 기본 계정 시드 데이터 삽입 (admin / able2021!)
+- [x] tRPC: auth.register - 닉네임 선택 방식 회원가입, 중복 방지
+- [x] tRPC: auth.login - 아이디/비밀번호 검증, JWT 세션 쿠키 발급
+- [x] tRPC: auth.logout - 세션 쿠키 삭제
+- [x] tRPC: auth.me - 현재 로그인 사용자 정보 반환
+- [x] tRPC: auth.listAccounts - 관리자 전용: 전체 계정 목록 조회
+- [x] tRPC: auth.availableNicknames - 가입 가능한 닉네임 목록
+- [x] 프론트엔드: AuthContext - 로그인 상태/역할 전역 관리
+- [x] 프론트엔드: LoginPage - 아이디/비밀번호 입력, 회원가입 링크
+- [x] 프론트엔드: RegisterPage - 닉네임 선택 방식 회원가입
+- [x] 프론트엔드: AppLayout - 역할별 네비게이션 메뉴 제어
+- [x] 프론트엔드: ProtectedRoute - 역할 기반 라우트 보호
+- [x] 프론트엔드: AccountManagePage - 관리자 전용 계정 관리 페이지
+- [x] App.tsx: 루트 경로(/) → 로그인 페이지로 변경
+- [x] App.tsx: 역할별 라우트 보호 적용

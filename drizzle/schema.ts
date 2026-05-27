@@ -85,6 +85,20 @@ export const orders = mysqlTable("orders", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// 자체 인증 계정
+export const accounts = mysqlTable("accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  username: varchar("username", { length: 100 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  nickname: varchar("nickname", { length: 100 }).notNull().unique(),
+  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  employeeId: int("employeeId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Account = typeof accounts.$inferSelect;
+export type InsertAccount = typeof accounts.$inferInsert;
+
 export type Restaurant = typeof restaurants.$inferSelect;
 export type MenuItem = typeof menuItems.$inferSelect;
 export type Employee = typeof employees.$inferSelect;

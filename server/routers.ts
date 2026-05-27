@@ -23,9 +23,17 @@ import {
   getOrderSummary,
   getOrderHistory,
   getDb,
+  getAccountByUsername,
+  getAccountByNickname,
+  createAccount,
+  getAllAccounts,
+  getUsedNicknames,
 } from "./db";
+import { createHash } from "crypto";
+import { SignJWT, jwtVerify } from "jose";
 
 const ADMIN_PASSWORD = "2101";
+const APP_COOKIE_NAME = "dinner_session";
 
 function adminProcedure(password: string) {
   if (password !== ADMIN_PASSWORD) {
@@ -39,6 +47,28 @@ function getToday() {
   return kst.toISOString().slice(0, 10);
 }
 
+function hashPassword(password: string): string {
+  return createHash("sha256").update(password + "dinner_salt_2024").digest("hex");
+}
+
+async function signToken(payload: { id: number; username: string; nickname: string; role: string }) {
+  const secret = new TextEncoder().encode(process.env.JWT_SECRET || "dinner_jwt_secret_2024");
+  return await new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("7d")
+    .sign(secret);
+}
+
+async function verifyToken(token: string) {
+  try {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || "dinner_jwt_secret_2024");
+    const { payload } = await jwtVerify(token, secret);
+    return payload as { id: number; username: string; nickname: string; role: string };
+  } catch {
+    return null;
+  }
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -48,6 +78,117 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+
+  // ─── 자체 인증 ────────────────────────────────────────────
+  account: router({
+    // 현재 로그인 세션 확인
+    session: publicProcedure.query(async ({ ctx }) => {
+      const token = ctx.req.cookies?.[APP_COOKIE_NAME];
+      if (!token) return null;
+      const payload = await verifyToken(token);
+      if (!payload) return null;
+      return { id: payload.id, username: payload.username, nickname: payload.nickname, role: payload.role };
+    }),
+
+    // 가입 가능한 닉네임 목록 (아직 사용되지 않은 닉네임)
+    availableNicknames: publicProcedure.query(async () => {
+      const allEmployees = await getAllEmployees();
+      const usedNicknames = await getUsedNicknames();
+      const usedSet = new Set(usedNicknames);
+      return allEmployees
+        .filter(e => !usedSet.has(e.nickname))
+        .map(e => ({ id: e.id, nickname: e.nickname }));
+    }),
+
+    // 회원가입
+    register: publicProcedure
+      .input(z.object({
+        username: z.string().min(3).max(50),
+        password: z.string().min(4),
+        nickname: z.string().min(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        // 닉네임이 직원 목록에 있는지 확인
+        const allEmployees = await getAllEmployees();
+        const validNickname = allEmployees.find(e => e.nickname === input.nickname);
+        if (!validNickname) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "유효하지 않은 닉네임입니다. 직원 목록에 있는 닉네임만 사용 가능합니다." });
+        }
+
+        // 닉네임 중복 확인
+        const existingByNickname = await getAccountByNickname(input.nickname);
+        if (existingByNickname) {
+          throw new TRPCError({ code: "CONFLICT", message: "이미 사용 중인 닉네임입니다." });
+        }
+
+        // 아이디 중복 확인
+        const existingByUsername = await getAccountByUsername(input.username);
+        if (existingByUsername) {
+          throw new TRPCError({ code: "CONFLICT", message: "이미 사용 중인 아이디입니다." });
+        }
+
+        const passwordHash = hashPassword(input.password);
+        const account = await createAccount({
+          username: input.username,
+          passwordHash,
+          nickname: input.nickname,
+          role: "user",
+          employeeId: validNickname.id,
+        });
+
+        // 자동 로그인
+        const token = await signToken({ id: account.id, username: account.username, nickname: account.nickname, role: account.role });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(APP_COOKIE_NAME, token, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 });
+
+        return { success: true, username: account.username, nickname: account.nickname, role: account.role };
+      }),
+
+    // 로그인
+    login: publicProcedure
+      .input(z.object({
+        username: z.string(),
+        password: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const account = await getAccountByUsername(input.username);
+        if (!account) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "아이디 또는 비밀번호가 올바르지 않습니다." });
+        }
+
+        const passwordHash = hashPassword(input.password);
+        if (account.passwordHash !== passwordHash) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "아이디 또는 비밀번호가 올바르지 않습니다." });
+        }
+
+        const token = await signToken({ id: account.id, username: account.username, nickname: account.nickname, role: account.role });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(APP_COOKIE_NAME, token, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 });
+
+        return { success: true, username: account.username, nickname: account.nickname, role: account.role };
+      }),
+
+    // 로그아웃
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.clearCookie(APP_COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      return { success: true };
+    }),
+
+    // 관리자 전용: 전체 계정 목록
+    listAll: publicProcedure
+      .input(z.object({ adminUsername: z.string(), adminPassword: z.string() }))
+      .query(async ({ input, ctx }) => {
+        // 세션에서 관리자 확인
+        const token = ctx.req.cookies?.[APP_COOKIE_NAME];
+        if (!token) throw new TRPCError({ code: "UNAUTHORIZED", message: "로그인이 필요합니다." });
+        const payload = await verifyToken(token);
+        if (!payload || payload.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "관리자 권한이 필요합니다." });
+        }
+        return await getAllAccounts();
+      }),
   }),
 
   // ─── 식당 ─────────────────────────────────────────────────

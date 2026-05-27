@@ -408,3 +408,53 @@ export async function getOrderHistory({
     .where(whereCondition)
     .orderBy(orders.orderDate, employees.nickname);
 }
+
+// ─── 계정(인증) 관련 ─────────────────────────────────────────
+import { accounts, InsertAccount } from "../drizzle/schema";
+
+export async function getAccountByUsername(username: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(accounts).where(eq(accounts.username, username)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getAccountByNickname(nickname: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(accounts).where(eq(accounts.nickname, nickname)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function createAccount(data: InsertAccount) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(accounts).values(data);
+  const created = await getAccountByUsername(data.username);
+  if (!created) throw new Error("Failed to create account");
+  return created;
+}
+
+export async function getAllAccounts() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select({
+      id: accounts.id,
+      username: accounts.username,
+      passwordHash: accounts.passwordHash,
+      nickname: accounts.nickname,
+      role: accounts.role,
+      employeeId: accounts.employeeId,
+      createdAt: accounts.createdAt,
+    })
+    .from(accounts)
+    .orderBy(accounts.createdAt);
+}
+
+export async function getUsedNicknames() {
+  const db = await getDb();
+  if (!db) return [];
+  const result = await db.select({ nickname: accounts.nickname }).from(accounts);
+  return result.map(r => r.nickname);
+}
