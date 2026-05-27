@@ -2,7 +2,6 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAppAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,13 +18,20 @@ import {
 import { Loader2, Search, Shield, User, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+const glassCard = {
+  background: "rgba(255,255,255,0.10)",
+  backdropFilter: "blur(18px)",
+  WebkitBackdropFilter: "blur(18px)",
+  border: "1px solid rgba(255,255,255,0.18)",
+  borderRadius: "1rem",
+} as React.CSSProperties;
+
 export default function AccountManagePage() {
   const { user, isAdmin, isLoading } = useAppAuth();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; username: string } | null>(null);
 
-  // 관리자 아닌 경우 리다이렉트
   if (!isLoading && (!user || !isAdmin)) {
     setLocation("/");
     return null;
@@ -59,7 +65,7 @@ export default function AccountManagePage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-6 h-6 animate-spin" style={{ color: "oklch(0.45 0.18 250)" }} />
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: "rgba(150,170,255,0.8)" }} />
       </div>
     );
   }
@@ -67,112 +73,108 @@ export default function AccountManagePage() {
   return (
     <div className="container py-6 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-1" style={{ color: "oklch(0.20 0.05 250)" }}>
+        <h1 className="text-2xl font-bold mb-1" style={{ color: "white", textShadow: "0 2px 8px rgba(0,0,0,0.4)" }}>
           계정 관리
         </h1>
-        <p className="text-sm" style={{ color: "oklch(0.50 0.03 250)" }}>
+        <p className="text-sm" style={{ color: "rgba(180,200,255,0.75)" }}>
           가입된 모든 회원의 계정 정보를 확인하고 관리합니다.
         </p>
       </div>
 
       {/* 검색 */}
       <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(180,200,255,0.5)" }} />
         <Input
           placeholder="아이디 또는 닉네임 검색..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
+          className="pl-9 focus-visible:ring-white/30 placeholder:text-white/40"
+          style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "white" }}
         />
       </div>
 
       {/* 통계 */}
       <div className="grid grid-cols-2 gap-3 mb-6">
-        <Card className="border-0 shadow-sm" style={{ background: "oklch(0.92 0.04 250)" }}>
-          <CardContent className="py-3 px-4">
-            <div className="text-2xl font-bold" style={{ color: "oklch(0.30 0.12 250)" }}>
-              {accounts.length}
-            </div>
-            <div className="text-xs" style={{ color: "oklch(0.45 0.08 250)" }}>전체 계정</div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm" style={{ background: "oklch(0.92 0.04 250)" }}>
-          <CardContent className="py-3 px-4">
-            <div className="text-2xl font-bold" style={{ color: "oklch(0.30 0.12 250)" }}>
-              {accounts.filter((a: any) => a.role === "admin").length}
-            </div>
-            <div className="text-xs" style={{ color: "oklch(0.45 0.08 250)" }}>관리자 계정</div>
-          </CardContent>
-        </Card>
+        <div className="py-3 px-4" style={glassCard}>
+          <div className="text-2xl font-bold" style={{ color: "rgba(150,170,255,1)" }}>{accounts.length}</div>
+          <div className="text-xs" style={{ color: "rgba(180,200,255,0.65)" }}>전체 계정</div>
+        </div>
+        <div className="py-3 px-4" style={glassCard}>
+          <div className="text-2xl font-bold" style={{ color: "rgba(200,160,255,1)" }}>
+            {accounts.filter((a: any) => a.role === "admin").length}
+          </div>
+          <div className="text-xs" style={{ color: "rgba(180,200,255,0.65)" }}>관리자 계정</div>
+        </div>
       </div>
 
       {/* 계정 목록 */}
       {loadingAccounts ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin" style={{ color: "oklch(0.45 0.18 250)" }} />
+          <Loader2 className="w-6 h-6 animate-spin" style={{ color: "rgba(150,170,255,0.8)" }} />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12" style={{ color: "rgba(180,200,255,0.5)" }}>
           {accounts.length === 0 ? "가입된 계정이 없습니다." : "검색 결과가 없습니다."}
         </div>
       ) : (
         <div className="space-y-2">
           {filtered.map((account: any) => (
-            <Card key={account.id} className="border shadow-sm">
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{
-                        background: account.role === "admin" ? "oklch(0.85 0.08 250)" : "oklch(0.92 0.03 250)",
-                      }}
-                    >
-                      {account.role === "admin" ? (
-                        <Shield className="w-4 h-4" style={{ color: "oklch(0.40 0.15 250)" }} />
-                      ) : (
-                        <User className="w-4 h-4" style={{ color: "oklch(0.55 0.05 250)" }} />
-                      )}
+            <div
+              key={account.id}
+              className="py-3 px-4 rounded-xl transition-all"
+              style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)" }}
+            >
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: account.role === "admin" ? "rgba(120,100,255,0.30)" : "rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    {account.role === "admin" ? (
+                      <Shield className="w-4 h-4" style={{ color: "rgba(200,160,255,1)" }} />
+                    ) : (
+                      <User className="w-4 h-4" style={{ color: "rgba(180,200,255,0.8)" }} />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm" style={{ color: "white" }}>
+                        {account.username}
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className="text-xs px-1.5 py-0 border-0"
+                        style={{
+                          background: account.role === "admin" ? "rgba(120,100,255,0.30)" : "rgba(255,255,255,0.12)",
+                          color: account.role === "admin" ? "rgba(200,160,255,1)" : "rgba(180,200,255,0.75)",
+                        }}
+                      >
+                        {account.role === "admin" ? "관리자" : "일반회원"}
+                      </Badge>
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm" style={{ color: "oklch(0.20 0.05 250)" }}>
-                          {account.username}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className="text-xs px-1.5 py-0"
-                          style={{
-                            background: account.role === "admin" ? "oklch(0.85 0.08 250)" : "oklch(0.92 0.03 250)",
-                            color: account.role === "admin" ? "oklch(0.35 0.15 250)" : "oklch(0.45 0.05 250)",
-                          }}
-                        >
-                          {account.role === "admin" ? "관리자" : "일반회원"}
-                        </Badge>
-                      </div>
-                      <div className="text-xs mt-0.5" style={{ color: "oklch(0.50 0.03 250)" }}>
-                        닉네임: <span className="font-medium">{account.nickname}</span>
-                      </div>
-                      <div className="text-xs mt-0.5" style={{ color: "oklch(0.60 0.03 250)" }}>
-                        가입일: {new Date(account.createdAt).toLocaleString("ko-KR")}
-                      </div>
+                    <div className="text-xs mt-0.5" style={{ color: "rgba(180,200,255,0.65)" }}>
+                      닉네임: <span className="font-medium">{account.nickname}</span>
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: "rgba(180,200,255,0.5)" }}>
+                      가입일: {new Date(account.createdAt).toLocaleString("ko-KR")}
                     </div>
                   </div>
-
-                  {/* 삭제 버튼 (자기 자신 제외) */}
-                  {account.id !== user?.id && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-400 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => setDeleteTarget({ id: account.id, username: account.username })}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
                 </div>
-              </CardContent>
-            </Card>
+
+                {account.id !== user?.id && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    style={{ color: "rgba(255,120,120,0.8)" }}
+                    onClick={() => setDeleteTarget({ id: account.id, username: account.username })}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}

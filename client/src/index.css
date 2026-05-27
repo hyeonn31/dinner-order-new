@@ -119,10 +119,16 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
     font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     letter-spacing: -0.3px;
+    background-image: url('/manus-storage/bg_anime_fb0cb638.webp');
+    background-size: cover;
+    background-position: center top;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-color: oklch(0.12 0.04 250);
   }
   h1, h2, h3 {
     font-family: 'Noto Sans KR', sans-serif;

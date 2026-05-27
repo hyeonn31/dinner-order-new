@@ -43,19 +43,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     : userNavItems;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "oklch(0.97 0.01 250)" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: "transparent" }}>
+      {/* 전체 어두운 오버레이 */}
+      <div
+        className="fixed inset-0 pointer-events-none"
+        style={{ background: "linear-gradient(160deg, rgba(8,12,35,0.60) 0%, rgba(15,8,40,0.52) 100%)", zIndex: 0 }}
+      />
+
       {/* Header */}
-      <header style={{ background: "oklch(0.35 0.08 250)" }} className="sticky top-0 z-50 shadow-lg">
+      <header
+        className="sticky top-0 z-50 shadow-lg"
+        style={{
+          background: "rgba(15,20,55,0.55)",
+          backdropFilter: "blur(18px)",
+          WebkitBackdropFilter: "blur(18px)",
+          borderBottom: "1px solid rgba(120,140,255,0.20)",
+        }}
+      >
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link href="/home" className="flex items-center gap-5 group">
-              <img src="/manus-storage/Logo_White_22c5f440.png" alt="ABLE Logo" className="h-10 shrink-0" />
+            <Link href="/home" className="flex items-center gap-3 group">
+              <img src="/manus-storage/Logo_White_22c5f440.png" alt="ABLE Logo" className="h-9 shrink-0 drop-shadow" />
               <div>
                 <div className="font-semibold text-white text-sm tracking-wide" style={{ fontFamily: "'Noto Sans KR', sans-serif", fontWeight: 600 }}>
                   Dinner Order
                 </div>
-                <div className="text-xs" style={{ color: "oklch(0.70 0.05 250)" }}>저녁식사 신청 시스템</div>
+                <div className="text-xs" style={{ color: "rgba(180,200,255,0.65)" }}>저녁식사 신청 시스템</div>
               </div>
             </Link>
 
@@ -67,15 +81,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   <Link key={path} href={path}>
                     <button
                       className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
                         isActive
                           ? "text-white"
-                          : "text-white/60 hover:text-white/90 hover:bg-white/5"
+                          : "text-white/55 hover:text-white/90 hover:bg-white/8"
                       )}
                       style={isActive ? {
-                        background: "oklch(0.55 0.18 250 / 0.2)",
-                        border: "1px solid oklch(0.55 0.18 250 / 0.35)",
-                        color: "oklch(0.85 0.15 250)"
+                        background: "rgba(120,140,255,0.22)",
+                        border: "1px solid rgba(150,170,255,0.35)",
+                        color: "rgba(200,215,255,1)",
                       } : {}}
                     >
                       <Icon className="w-4 h-4" />
@@ -88,15 +102,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {/* 관리자 전용: 관리 드롭다운 */}
               {isAdmin && (
                 <div className="relative" onMouseEnter={() => setShowManageMenu(true)} onMouseLeave={() => setShowManageMenu(false)}>
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/5 transition-all duration-200">
+                  <button
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white/55 hover:text-white/90 hover:bg-white/8 transition-all duration-200"
+                  >
                     <UserCog className="w-4 h-4" />
                     <span className="hidden sm:inline">관리</span>
                   </button>
                   {showManageMenu && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl z-50">
+                    <div
+                      className="absolute right-0 mt-1 w-48 rounded-xl shadow-2xl z-50 overflow-hidden"
+                      style={{
+                        background: "rgba(20,25,65,0.85)",
+                        backdropFilter: "blur(20px)",
+                        WebkitBackdropFilter: "blur(20px)",
+                        border: "1px solid rgba(150,170,255,0.25)",
+                      }}
+                    >
                       {adminManageItems.map(({ path, label }) => (
                         <Link key={path} href={path}>
-                          <div className="px-4 py-3 hover:bg-blue-50 text-gray-800 text-sm cursor-pointer first:rounded-t-lg last:rounded-b-lg border-b last:border-b-0 border-gray-100">
+                          <div
+                            className="px-4 py-3 text-sm cursor-pointer transition-colors"
+                            style={{ color: "rgba(200,215,255,0.9)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(120,140,255,0.18)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          >
                             {label}
                           </div>
                         </Link>
@@ -108,14 +137,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
               {/* 사용자 정보 + 로그아웃 */}
               {user && (
-                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-white/20">
-                  <span className="text-xs text-white/70 hidden sm:inline">
+                <div className="flex items-center gap-2 ml-2 pl-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.15)" }}>
+                  <span className="text-xs hidden sm:inline" style={{ color: "rgba(180,200,255,0.75)" }}>
                     {user.nickname}
                     {isAdmin && <span className="ml-1 text-yellow-300 text-xs">(관리자)</span>}
                   </span>
                   <button
                     onClick={() => logoutMutation.mutate()}
-                    className="flex items-center gap-1 px-2 py-1.5 rounded-md text-white/60 hover:text-white hover:bg-white/10 transition-all text-xs"
+                    className="flex items-center gap-1 px-2 py-1.5 rounded-md transition-all text-xs"
+                    style={{ color: "rgba(180,200,255,0.65)" }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "white";
+                      e.currentTarget.style.background = "rgba(255,255,255,0.10)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "rgba(180,200,255,0.65)";
+                      e.currentTarget.style.background = "transparent";
+                    }}
                     title="로그아웃"
                   >
                     <LogOut className="w-3.5 h-3.5" />
@@ -126,18 +164,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
         </div>
-
-        {/* Blue accent line */}
-        <div style={{ background: "linear-gradient(90deg, transparent, oklch(0.55 0.18 250 / 0.6), transparent)", height: "1px" }} />
+        {/* 하단 글로우 라인 */}
+        <div style={{ background: "linear-gradient(90deg, transparent, rgba(150,170,255,0.4), transparent)", height: "1px" }} />
       </header>
 
       {/* Main */}
-      <main className="flex-1">
+      <main className="flex-1 relative z-10">
         {children}
       </main>
 
       {/* Footer */}
-      <footer className="py-4 text-center text-xs" style={{ color: "oklch(0.50 0.03 250)", borderTop: "1px solid oklch(0.90 0.01 250)" }}>
+      <footer
+        className="relative z-10 py-4 text-center text-xs"
+        style={{ color: "rgba(180,200,255,0.45)", borderTop: "1px solid rgba(255,255,255,0.08)" }}
+      >
         저녁식사 신청 시스템 &mdash; 매일 오후 4시~6시 운영
       </footer>
     </div>

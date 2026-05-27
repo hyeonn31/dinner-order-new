@@ -3,12 +3,11 @@ import { formatOrderMenuDisplay } from "@shared/formatOrderMenu";
 import { trpc } from "@/lib/trpc";
 import { useAppAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { ChevronDown, Send, X, CheckCircle2, UtensilsCrossed, AlertCircle, Search, Lock } from "lucide-react";
+import { Send, X, CheckCircle2, AlertCircle, Search, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +20,22 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const DRINK_OPTIONS = ["선택 안함", "제로콜라"];
+
+// 글래스 카드 공통 스타일
+const glassCard = {
+  background: "rgba(255,255,255,0.10)",
+  backdropFilter: "blur(18px)",
+  WebkitBackdropFilter: "blur(18px)",
+  border: "1px solid rgba(255,255,255,0.20)",
+  borderRadius: "1rem",
+} as React.CSSProperties;
+
+const glassSection = {
+  borderBottom: "1px solid rgba(255,255,255,0.10)",
+} as React.CSSProperties;
+
+const labelStyle = { color: "rgba(200,215,255,0.9)" } as React.CSSProperties;
+const subLabelStyle = { color: "rgba(180,200,255,0.65)" } as React.CSSProperties;
 
 export default function OrderPage() {
   const utils = trpc.useUtils();
@@ -49,17 +64,13 @@ export default function OrderPage() {
     { enabled: !!selectedRestaurantId }
   );
 
-  // 로그인한 사용자의 닉네임으로 직원 자동 선택
   useEffect(() => {
     if (user && employees && employees.length > 0 && selectedEmployeeId === null) {
       const matched = employees.find(e => e.nickname === user.nickname);
-      if (matched) {
-        setSelectedEmployeeId(matched.id);
-      }
+      if (matched) setSelectedEmployeeId(matched.id);
     }
   }, [user, employees]);
 
-  // 마감 상태 폴링 (5초마다 확인)
   useEffect(() => {
     if (todayRestaurants && todayRestaurants.length > 0) {
       setIsClosed(todayRestaurants[0].isClosed || false);
@@ -67,13 +78,10 @@ export default function OrderPage() {
   }, [todayRestaurants]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      utils.daily.todayRestaurants.invalidate();
-    }, 5000);
+    const interval = setInterval(() => { utils.daily.todayRestaurants.invalidate(); }, 5000);
     return () => clearInterval(interval);
   }, [utils]);
 
-  // 음료 기본값 설정 - 햄버거 제외 전부 제로콜라
   useEffect(() => {
     if (selectedRestaurantId && todayRestaurants) {
       const restaurant = todayRestaurants.find(r => r.restaurantId === selectedRestaurantId);
@@ -85,15 +93,13 @@ export default function OrderPage() {
     }
   }, [selectedRestaurantId, todayRestaurants]);
 
-  // 식당 변경 시 이전 식당의 메뉴 선택값 초기화
   useEffect(() => {
-      setMainMenu("");
-      setSideMenu("");
-      setExtraOption("");
-      setDressingOption("");
-    }, [selectedRestaurantId]);
+    setMainMenu("");
+    setSideMenu("");
+    setExtraOption("");
+    setDressingOption("");
+  }, [selectedRestaurantId]);
 
-  // 드롭다운 외부 클릭 감지
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target as Node)) {
@@ -130,16 +136,12 @@ export default function OrderPage() {
   });
 
   const handleSubmit = async () => {
-    if (isClosed) {
-      toast.error("신청이 마감되었습니다");
-      return;
-    }
+    if (isClosed) { toast.error("신청이 마감되었습니다"); return; }
     if (!selectedEmployeeId) return toast.error("이름을 선택해 주세요.");
     if (!selectedRestaurantId) return toast.error("식당을 선택해 주세요.");
     if (!mainMenu) return toast.error("메인 메뉴를 선택해 주세요.");
 
     try {
-      // 기존 주문 확인
       const existing = await utils.order.check.fetch({ employeeId: selectedEmployeeId });
       if (existing) {
         setExistingOrder(existing);
@@ -155,7 +157,6 @@ export default function OrderPage() {
         setShowDuplicateDialog(true);
         return;
       }
-
       const normalizeOption = (v: string) => (!v || v === "none" || v === "선택 안함") ? undefined : v;
       submitMutation.mutate({
         employeeId: selectedEmployeeId,
@@ -172,7 +173,6 @@ export default function OrderPage() {
 
   const mainMenus = menus?.filter((m: any) => m.itemType === "main") ?? [];
   const sideMenus = menus?.filter((m: any) => m.itemType === "side") ?? [];
-  const drinkMenus = menus?.filter((m: any) => m.itemType === "drink") ?? [];
   const dressingMenus = menus?.filter((m: any) => m.itemType === "dressing") ?? [];
   const optionMenus = menus?.filter((m: any) => m.itemType === "option" || m.itemType === "extra") ?? [];
   const selectableMainMenus = mainMenus.length > 0 ? mainMenus : (menus ?? []);
@@ -190,107 +190,109 @@ export default function OrderPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-1" style={{ color: "oklch(0.20 0.03 250)" }}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold mb-1" style={{ color: "white", textShadow: "0 2px 8px rgba(0,0,0,0.4)" }}>
           저녁식사 신청
         </h1>
-        <p className="text-sm" style={{ color: "oklch(0.50 0.03 250)" }}>
+        <p className="text-sm" style={{ color: "rgba(180,200,255,0.75)" }}>
           이름을 선택하고 원하는 메뉴를 신청하세요
         </p>
       </div>
 
-      {/* 마감 안내 메시지 */}
+      {/* 마감 안내 */}
       {isClosed && (
-        <div className="mb-6 p-4 rounded-lg flex gap-3" style={{ background: "oklch(0.95 0.08 30)", border: "1px solid oklch(0.75 0.15 30)" }}>
-          <Lock className="w-5 h-5 flex-shrink-0" style={{ color: "oklch(0.55 0.18 30)" }} />
+        <div className="mb-4 p-4 rounded-xl flex gap-3" style={{ background: "rgba(200,80,30,0.25)", border: "1px solid rgba(255,120,80,0.35)" }}>
+          <Lock className="w-5 h-5 flex-shrink-0" style={{ color: "rgba(255,160,120,1)" }} />
           <div>
-            <p className="font-medium mb-1" style={{ color: "oklch(0.30 0.10 30)" }}>신청이 마감되었습니다</p>
-            <p className="text-sm" style={{ color: "oklch(0.50 0.08 30)" }}>더 이상 신청을 받지 않습니다. 관리자 페이지에서 다시 열어주세요.</p>
+            <p className="font-medium mb-1" style={{ color: "rgba(255,200,180,1)" }}>신청이 마감되었습니다</p>
+            <p className="text-sm" style={{ color: "rgba(255,180,160,0.75)" }}>더 이상 신청을 받지 않습니다. 관리자 페이지에서 다시 열어주세요.</p>
           </div>
         </div>
       )}
 
-      {/* 오류 메시지 */}
+      {/* 미설정 안내 */}
       {hasNoSetup && (
-        <div className="mb-6 p-4 rounded-lg flex gap-3" style={{ background: "oklch(0.97 0.01 250)", border: "1px solid oklch(0.90 0.01 250)" }}>
-          <AlertCircle className="w-5 h-5 flex-shrink-0" style={{ color: "oklch(0.55 0.18 250)" }} />
+        <div className="mb-4 p-4 rounded-xl flex gap-3" style={{ background: "rgba(80,100,200,0.20)", border: "1px solid rgba(150,170,255,0.30)" }}>
+          <AlertCircle className="w-5 h-5 flex-shrink-0" style={{ color: "rgba(180,200,255,1)" }} />
           <div>
-            <p className="font-medium mb-1" style={{ color: "oklch(0.20 0.03 250)" }}>오늘의 식당이 아직 설정되지 않았습니다</p>
-            <p className="text-sm" style={{ color: "oklch(0.50 0.03 250)" }}>관리자 페이지에서 오늘의 식당을 먼저 설정해 주세요.</p>
+            <p className="font-medium mb-1" style={{ color: "white" }}>오늘의 식당이 아직 설정되지 않았습니다</p>
+            <p className="text-sm" style={{ color: "rgba(180,200,255,0.75)" }}>관리자 페이지에서 오늘의 식당을 먼저 설정해 주세요.</p>
           </div>
         </div>
       )}
 
       {/* 완료 메시지 */}
       {submitted && (
-        <div className="mb-6 p-4 rounded-lg flex gap-3" style={{ background: "oklch(0.92 0.05 140)", border: "1px solid oklch(0.70 0.15 140)" }}>
-          <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: "oklch(0.55 0.18 140)" }} />
-          <div>
-            <p className="font-medium" style={{ color: "oklch(0.20 0.03 250)" }}>신청이 완료되었습니다!</p>
-          </div>
+        <div className="mb-4 p-4 rounded-xl flex gap-3" style={{ background: "rgba(40,160,100,0.25)", border: "1px solid rgba(80,200,140,0.35)" }}>
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: "rgba(120,230,170,1)" }} />
+          <p className="font-medium" style={{ color: "rgba(180,255,220,1)" }}>신청이 완료되었습니다!</p>
         </div>
       )}
 
       {!hasNoSetup && (
         <>
           {/* Main Form Card */}
-          <div className="rounded-2xl" style={{ background: "white", border: "1px solid oklch(0.90 0.01 250)", boxShadow: "0 4px 24px oklch(0.20 0.03 250 / 0.08)", overflow: "visible" }}>
+          <div style={{ ...glassCard, overflow: "visible" }}>
 
             {/* Step 1: 이름 선택 */}
-            <div className="p-6 border-b" style={{ borderColor: "oklch(0.92 0.01 250)", overflow: "visible" }}>
-              <Label className="text-sm font-semibold mb-3 block" style={{ color: "oklch(0.35 0.03 250)" }}>
+            <div className="p-6" style={{ ...glassSection, overflow: "visible" }}>
+              <Label className="text-sm font-semibold mb-3 block" style={labelStyle}>
                 1. 이름 선택
               </Label>
               <div className="relative" ref={employeeDropdownRef}>
                 <div className="relative mb-2">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-3 w-4 h-4" style={{ color: "rgba(180,200,255,0.6)" }} />
                   <Input
                     placeholder="이름 검색..."
                     value={employeeSearchQuery}
-                    onChange={(e) => {
-                      setEmployeeSearchQuery(e.target.value);
-                      setIsEmployeeDropdownOpen(true);
-                    }}
+                    onChange={(e) => { setEmployeeSearchQuery(e.target.value); setIsEmployeeDropdownOpen(true); }}
                     onFocus={() => setIsEmployeeDropdownOpen(true)}
-                    className="pl-10"
+                    className="pl-10 border-0 text-white placeholder:text-white/40 focus-visible:ring-white/30"
+                    style={{ background: "rgba(255,255,255,0.12)" }}
                   />
                 </div>
-                
-                {/* 커스텀 드롭다운 */}
+
                 {isEmployeeDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-input rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
+                  <div
+                    className="absolute top-full left-0 right-0 mt-1 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto"
+                    style={{
+                      background: "rgba(20,25,65,0.92)",
+                      backdropFilter: "blur(20px)",
+                      WebkitBackdropFilter: "blur(20px)",
+                      border: "1px solid rgba(150,170,255,0.25)",
+                    }}
+                  >
                     {filteredEmployees.length > 0 ? (
                       filteredEmployees.map((emp) => (
                         <div
                           key={emp.id}
-                          onClick={() => {
-                            setSelectedEmployeeId(emp.id);
-                            setEmployeeSearchQuery("");
-                            setIsEmployeeDropdownOpen(false);
-                          }}
-                          className="px-4 py-2 hover:bg-accent cursor-pointer text-sm transition-colors"
+                          onClick={() => { setSelectedEmployeeId(emp.id); setEmployeeSearchQuery(""); setIsEmployeeDropdownOpen(false); }}
+                          className="px-4 py-2.5 cursor-pointer text-sm transition-colors"
+                          style={{ color: "rgba(200,215,255,0.9)" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(120,140,255,0.20)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                         >
                           {emp.nickname}
                         </div>
                       ))
                     ) : (
-                      <div className="px-4 py-2 text-sm text-muted-foreground text-center">
+                      <div className="px-4 py-3 text-sm text-center" style={{ color: "rgba(180,200,255,0.5)" }}>
                         검색 결과가 없습니다
                       </div>
                     )}
                   </div>
                 )}
-                
-                {/* 선택된 이름 표시 */}
+
                 {selectedEmployeeId && (
-                  <div className="p-3 bg-accent rounded-md text-sm font-medium" style={{ color: "oklch(0.35 0.03 250)" }}>
-                    선택됨: {employees?.find(e => e.id === selectedEmployeeId)?.nickname}
+                  <div
+                    className="p-3 rounded-lg text-sm font-medium flex items-center justify-between"
+                    style={{ background: "rgba(120,140,255,0.20)", border: "1px solid rgba(150,170,255,0.30)", color: "white" }}
+                  >
+                    <span>선택됨: {employees?.find(e => e.id === selectedEmployeeId)?.nickname}</span>
                     <button
-                      onClick={() => {
-                        setSelectedEmployeeId(null);
-                        setEmployeeSearchQuery("");
-                      }}
-                      className="ml-2 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => { setSelectedEmployeeId(null); setEmployeeSearchQuery(""); }}
+                      className="ml-2 text-xs"
+                      style={{ color: "rgba(180,200,255,0.65)" }}
                     >
                       ✕
                     </button>
@@ -301,12 +303,12 @@ export default function OrderPage() {
 
             {/* Step 2: 식당 선택 */}
             {selectedEmployeeId && (
-              <div className="p-6 border-b" style={{ borderColor: "oklch(0.92 0.01 250)" }}>
-                <Label className="text-sm font-semibold mb-3 block" style={{ color: "oklch(0.35 0.03 250)" }}>
+              <div className="p-6" style={glassSection}>
+                <Label className="text-sm font-semibold mb-3 block" style={labelStyle}>
                   2. 식당 선택
                 </Label>
                 <Select value={selectedRestaurantId?.toString() || ""} onValueChange={(v) => setSelectedRestaurantId(parseInt(v))}>
-                  <SelectTrigger>
+                  <SelectTrigger className="border-0 text-white focus:ring-white/30" style={{ background: "rgba(255,255,255,0.12)" }}>
                     <SelectValue placeholder="식당을 선택하세요..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -322,23 +324,21 @@ export default function OrderPage() {
 
             {/* Step 3: 메뉴 선택 */}
             {selectedEmployeeId && selectedRestaurantId && (
-              <div className="p-6 border-b" style={{ borderColor: "oklch(0.92 0.01 250)" }}>
-                <Label className="text-sm font-semibold mb-4 block" style={{ color: "oklch(0.35 0.03 250)" }}>
+              <div className="p-6" style={glassSection}>
+                <Label className="text-sm font-semibold mb-4 block" style={labelStyle}>
                   3. 메뉴 선택
                 </Label>
                 <div className="space-y-4">
                   {/* 메인메뉴 */}
                   <div>
-                    <div className="text-xs font-medium mb-1.5" style={{ color: "oklch(0.55 0.02 250)" }}>메인메뉴 *</div>
+                    <div className="text-xs font-medium mb-1.5" style={subLabelStyle}>메인메뉴 *</div>
                     <Select value={mainMenu} onValueChange={setMainMenu}>
-                      <SelectTrigger className="w-full h-11">
+                      <SelectTrigger className="w-full h-11 border-0 text-white focus:ring-white/30" style={{ background: "rgba(255,255,255,0.12)" }}>
                         <SelectValue placeholder="메인메뉴를 선택하세요" />
                       </SelectTrigger>
                       <SelectContent className="max-h-64">
                         {selectableMainMenus.length === 0 ? (
-                          <SelectItem value="__empty__" disabled>
-                            등록된 메뉴가 없습니다 (관리자에게 문의)
-                          </SelectItem>
+                          <SelectItem value="__empty__" disabled>등록된 메뉴가 없습니다 (관리자에게 문의)</SelectItem>
                         ) : (
                           selectableMainMenus.map((m: any) => (
                             <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
@@ -351,9 +351,9 @@ export default function OrderPage() {
                   {/* 사이드 */}
                   {sideMenus.length > 0 && (
                     <div>
-                      <div className="text-xs font-medium mb-1.5" style={{ color: "oklch(0.55 0.02 250)" }}>사이드</div>
+                      <div className="text-xs font-medium mb-1.5" style={subLabelStyle}>사이드</div>
                       <Select value={sideMenu} onValueChange={setSideMenu}>
-                        <SelectTrigger className="w-full h-11">
+                        <SelectTrigger className="w-full h-11 border-0 text-white focus:ring-white/30" style={{ background: "rgba(255,255,255,0.12)" }}>
                           <SelectValue placeholder="사이드를 선택하세요" />
                         </SelectTrigger>
                         <SelectContent className="max-h-64">
@@ -368,16 +368,14 @@ export default function OrderPage() {
 
                   {/* 음료 */}
                   <div>
-                    <div className="text-xs font-medium mb-1.5" style={{ color: "oklch(0.55 0.02 250)" }}>음료</div>
+                    <div className="text-xs font-medium mb-1.5" style={subLabelStyle}>음료</div>
                     <Select value={drinkOption} onValueChange={setDrinkOption}>
-                      <SelectTrigger className="w-full h-11">
+                      <SelectTrigger className="w-full h-11 border-0 text-white focus:ring-white/30" style={{ background: "rgba(255,255,255,0.12)" }}>
                         <SelectValue placeholder="음료를 선택하세요" />
                       </SelectTrigger>
                       <SelectContent>
                         {DRINK_OPTIONS.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -386,9 +384,9 @@ export default function OrderPage() {
                   {/* 드레싱 */}
                   {dressingMenus.length > 0 && (
                     <div>
-                      <div className="text-xs font-medium mb-1.5" style={{ color: "oklch(0.55 0.02 250)" }}>드레싱</div>
+                      <div className="text-xs font-medium mb-1.5" style={subLabelStyle}>드레싱</div>
                       <Select value={dressingOption} onValueChange={setDressingOption}>
-                        <SelectTrigger className="w-full h-11">
+                        <SelectTrigger className="w-full h-11 border-0 text-white focus:ring-white/30" style={{ background: "rgba(255,255,255,0.12)" }}>
                           <SelectValue placeholder="드레싱을 선택하세요" />
                         </SelectTrigger>
                         <SelectContent className="max-h-64">
@@ -404,9 +402,9 @@ export default function OrderPage() {
                   {/* 추가 옵션 */}
                   {optionMenus.length > 0 && (
                     <div>
-                      <div className="text-xs font-medium mb-1.5" style={{ color: "oklch(0.55 0.02 250)" }}>추가 옵션</div>
+                      <div className="text-xs font-medium mb-1.5" style={subLabelStyle}>추가 옵션</div>
                       <Select value={extraOption} onValueChange={setExtraOption}>
-                        <SelectTrigger className="w-full h-11">
+                        <SelectTrigger className="w-full h-11 border-0 text-white focus:ring-white/30" style={{ background: "rgba(255,255,255,0.12)" }}>
                           <SelectValue placeholder="추가 옵션을 선택하세요" />
                         </SelectTrigger>
                         <SelectContent className="max-h-64">
@@ -428,8 +426,12 @@ export default function OrderPage() {
                 <Button
                   onClick={handleSubmit}
                   disabled={submitMutation.isPending}
-                  className="flex-1 h-11 text-base font-semibold"
-                  style={{ background: "oklch(0.55 0.18 140)", color: "white" }}
+                  className="flex-1 h-11 text-base font-semibold border-0 shadow-lg transition-all duration-200 active:scale-[0.97]"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(60,180,120,0.85), rgba(40,150,100,0.85))",
+                    color: "white",
+                    boxShadow: "0 4px 20px rgba(40,160,100,0.4)",
+                  }}
                 >
                   <Send className="w-4 h-4 mr-2" />
                   {submitMutation.isPending ? "신청 중..." : "신청하기"}
@@ -444,7 +446,8 @@ export default function OrderPage() {
                     setExtraOption("");
                   }}
                   variant="outline"
-                  className="px-4"
+                  className="px-4 border-0"
+                  style={{ background: "rgba(255,255,255,0.12)", color: "rgba(200,215,255,0.8)" }}
                 >
                   <X className="w-4 h-4" />
                 </Button>
