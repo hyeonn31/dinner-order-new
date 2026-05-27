@@ -32,8 +32,12 @@ export default function RegisterPage() {
   const registerMutation = trpc.account.register.useMutation({
     onSuccess: async (data) => {
       toast.success(`${data.nickname}님, 가입을 환영합니다!`);
-      await refetch();
-      setLocation("/home");
+      const freshUser = await refetch();
+      if (freshUser?.role === "admin") {
+        setLocation("/admin");
+      } else {
+        setLocation("/order");
+      }
     },
     onError: (error) => {
       toast.error(error.message || "회원가입에 실패했습니다.");

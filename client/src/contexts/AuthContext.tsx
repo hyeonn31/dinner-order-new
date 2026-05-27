@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 
 export type SessionUser = {
@@ -13,7 +13,7 @@ type AuthContextType = {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  refetch: () => void;
+  refetch: () => Promise<SessionUser | null>;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -21,7 +21,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isAuthenticated: false,
   isAdmin: false,
-  refetch: () => {},
+  refetch: async () => null,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -30,16 +30,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refetchOnWindowFocus: false,
   });
 
-  const user = data as SessionUser | null | undefined;
+  const user = (data as SessionUser | null | undefined) ?? null;
+
+  // refetch를 호출하고 새로운 user 값을 반환하는 Promise를 리턴
+  const refetchAndReturn = async (): Promise<SessionUser | null> => {
+    const result = await refetch();
+    return (result.data as SessionUser | null | undefined) ?? null;
+  };
 
   return (
     <AuthContext.Provider
       value={{
-        user: user ?? null,
+        user,
         isLoading,
         isAuthenticated: !!user,
         isAdmin: user?.role === "admin",
-        refetch,
+        refetch: refetchAndReturn,
       }}
     >
       {children}

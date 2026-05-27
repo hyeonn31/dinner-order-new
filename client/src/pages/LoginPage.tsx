@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAppAuth } from "@/contexts/AuthContext";
@@ -18,8 +18,13 @@ export default function LoginPage() {
   const loginMutation = trpc.account.login.useMutation({
     onSuccess: async (data) => {
       toast.success(`환영합니다, ${data.nickname}님!`);
-      await refetch();
-      setLocation("/home");
+      // refetch로 세션 갱신 후 반환된 user 데이터로 직접 라우팅
+      const freshUser = await refetch();
+      if (freshUser?.role === "admin") {
+        setLocation("/admin");
+      } else {
+        setLocation("/order");
+      }
     },
     onError: (error) => {
       toast.error(error.message || "로그인에 실패했습니다.");
