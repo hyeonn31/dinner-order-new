@@ -50,7 +50,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/home" className="flex items-center gap-5 group">
-              <img src="/manus-storage/Logo_White_9e0a8e5c.png" alt="ABLE Logo" className="h-10 shrink-0" />
+              <img src="/manus-storage/Logo_White_22c5f440.png" alt="ABLE Logo" className="h-10 shrink-0" />
               <div>
                 <div className="font-semibold text-white text-sm tracking-wide" style={{ fontFamily: "'Noto Sans KR', sans-serif", fontWeight: 600 }}>
                   Dinner Order

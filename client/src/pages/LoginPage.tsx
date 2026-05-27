@@ -48,7 +48,7 @@ export default function LoginPage() {
         <div className="text-center space-y-2">
           <div className="flex justify-center mb-4">
             <img
-              src="/manus-storage/Logo_White_9e0a8e5c.png"
+              src="/manus-storage/Logo_White_22c5f440.png"
               alt="ABLE"
               className="h-10 object-contain"
             />
