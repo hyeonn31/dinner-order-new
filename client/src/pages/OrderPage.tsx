@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { formatOrderMenuDisplay } from "@shared/formatOrderMenu";
 import { trpc } from "@/lib/trpc";
+import { useAppAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { ChevronDown, Send, X, CheckCircle2, UtensilsCrossed, AlertCircle, Search, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ const DRINK_OPTIONS = ["선택 안함", "제로콜라"];
 
 export default function OrderPage() {
   const utils = trpc.useUtils();
+  const { user } = useAppAuth();
   const { data: employees } = trpc.employee.list.useQuery();
   const { data: todayRestaurants } = trpc.daily.todayRestaurants.useQuery();
 
@@ -46,6 +48,16 @@ export default function OrderPage() {
     { restaurantId: selectedRestaurantId! },
     { enabled: !!selectedRestaurantId }
   );
+
+  // 로그인한 사용자의 닉네임으로 직원 자동 선택
+  useEffect(() => {
+    if (user && employees && employees.length > 0 && selectedEmployeeId === null) {
+      const matched = employees.find(e => e.nickname === user.nickname);
+      if (matched) {
+        setSelectedEmployeeId(matched.id);
+      }
+    }
+  }, [user, employees]);
 
   // 마감 상태 폴링 (5초마다 확인)
   useEffect(() => {
