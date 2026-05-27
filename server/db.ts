@@ -442,7 +442,6 @@ export async function getAllAccounts() {
     .select({
       id: accounts.id,
       username: accounts.username,
-      passwordHash: accounts.passwordHash,
       nickname: accounts.nickname,
       role: accounts.role,
       employeeId: accounts.employeeId,
@@ -450,6 +449,12 @@ export async function getAllAccounts() {
     })
     .from(accounts)
     .orderBy(accounts.createdAt);
+}
+
+export async function deleteAccount(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(accounts).where(eq(accounts.id, id));
 }
 
 export async function getUsedNicknames() {

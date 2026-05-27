@@ -2,16 +2,28 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAppAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, Shield, User } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Search, Shield, User, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function AccountManagePage() {
   const { user, isAdmin, isLoading } = useAppAuth();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
-  const [showPasswords, setShowPasswords] = useState<Record<number, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; username: string } | null>(null);
 
   // 관리자 아닌 경우 리다이렉트
   if (!isLoading && (!user || !isAdmin)) {
@@ -19,20 +31,30 @@ export default function AccountManagePage() {
     return null;
   }
 
+  const utils = trpc.useUtils();
+
   const { data: accounts = [], isLoading: loadingAccounts } = trpc.account.listAll.useQuery(
     { adminUsername: user?.username ?? "", adminPassword: "" },
     { enabled: !!user && isAdmin }
   );
+
+  const deleteMutation = trpc.account.delete.useMutation({
+    onSuccess: () => {
+      toast.success("계정이 삭제되었습니다.");
+      utils.account.listAll.invalidate();
+      setDeleteTarget(null);
+    },
+    onError: (error) => {
+      toast.error(error.message || "계정 삭제에 실패했습니다.");
+      setDeleteTarget(null);
+    },
+  });
 
   const filtered = accounts.filter(
     (a: any) =>
       a.username.toLowerCase().includes(search.toLowerCase()) ||
       a.nickname.toLowerCase().includes(search.toLowerCase())
   );
-
-  const togglePassword = (id: number) => {
-    setShowPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
 
   if (isLoading) {
     return (
@@ -49,7 +71,7 @@ export default function AccountManagePage() {
           계정 관리
         </h1>
         <p className="text-sm" style={{ color: "oklch(0.50 0.03 250)" }}>
-          가입된 모든 회원의 계정 정보를 확인합니다.
+          가입된 모든 회원의 계정 정보를 확인하고 관리합니다.
         </p>
       </div>
 
@@ -131,36 +153,53 @@ export default function AccountManagePage() {
                       <div className="text-xs mt-0.5" style={{ color: "oklch(0.50 0.03 250)" }}>
                         닉네임: <span className="font-medium">{account.nickname}</span>
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="text-right">
-                      <div className="text-xs font-medium" style={{ color: "oklch(0.40 0.05 250)" }}>
-                        비밀번호 (해시)
-                      </div>
-                      <div
-                        className="text-xs font-mono cursor-pointer select-all"
-                        style={{ color: "oklch(0.55 0.05 250)", maxWidth: "180px", wordBreak: "break-all" }}
-                        onClick={() => togglePassword(account.id)}
-                        title="클릭하여 전체 보기"
-                      >
-                        {showPasswords[account.id]
-                          ? account.passwordHash
-                          : account.passwordHash.slice(0, 16) + "..."}
+                      <div className="text-xs mt-0.5" style={{ color: "oklch(0.60 0.03 250)" }}>
+                        가입일: {new Date(account.createdAt).toLocaleString("ko-KR")}
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-2 text-xs" style={{ color: "oklch(0.60 0.03 250)" }}>
-                  가입일: {new Date(account.createdAt).toLocaleString("ko-KR")}
+                  {/* 삭제 버튼 (자기 자신 제외) */}
+                  {account.id !== user?.id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-400 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => setDeleteTarget({ id: account.id, username: account.username })}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      {/* 삭제 확인 다이얼로그 */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>계정 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{deleteTarget?.username}</strong> 계정을 삭제하시겠습니까?
+              <br />이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600 text-white"
+              onClick={() => deleteTarget && deleteMutation.mutate({ id: deleteTarget.id })}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

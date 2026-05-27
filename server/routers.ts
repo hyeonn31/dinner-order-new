@@ -27,6 +27,7 @@ import {
   getAccountByNickname,
   createAccount,
   getAllAccounts,
+  deleteAccount,
   getUsedNicknames,
 } from "./db";
 import { createHash } from "crypto";
@@ -191,6 +192,25 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "관리자 권한이 필요합니다." });
         }
         return await getAllAccounts();
+      }),
+
+    // 관리자 전용: 계정 삭제
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const _cookies = ctx.req.headers.cookie ? parseCookies(ctx.req.headers.cookie) : {};
+        const token = _cookies[APP_COOKIE_NAME];
+        if (!token) throw new TRPCError({ code: "UNAUTHORIZED", message: "로그인이 필요합니다." });
+        const payload = await verifyToken(token);
+        if (!payload || payload.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "관리자 권한이 필요합니다." });
+        }
+        // 자기 자신 삭제 방지
+        if (payload.id === input.id) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "자신의 계정은 삭제할 수 없습니다." });
+        }
+        await deleteAccount(input.id);
+        return { success: true };
       }),
   }),
 
