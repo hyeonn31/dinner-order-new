@@ -31,6 +31,7 @@ import {
 } from "./db";
 import { createHash } from "crypto";
 import { SignJWT, jwtVerify } from "jose";
+import { parse as parseCookies } from "cookie";
 
 const ADMIN_PASSWORD = "2101";
 const APP_COOKIE_NAME = "dinner_session";
@@ -84,7 +85,8 @@ export const appRouter = router({
   account: router({
     // 현재 로그인 세션 확인
     session: publicProcedure.query(async ({ ctx }) => {
-      const token = ctx.req.cookies?.[APP_COOKIE_NAME];
+      const _c = ctx.req.headers.cookie ? parseCookies(ctx.req.headers.cookie) : {};
+      const token = _c[APP_COOKIE_NAME];
       if (!token) return null;
       const payload = await verifyToken(token);
       if (!payload) return null;
@@ -181,7 +183,8 @@ export const appRouter = router({
       .input(z.object({ adminUsername: z.string(), adminPassword: z.string() }))
       .query(async ({ input, ctx }) => {
         // 세션에서 관리자 확인
-        const token = ctx.req.cookies?.[APP_COOKIE_NAME];
+        const _cookies = ctx.req.headers.cookie ? parseCookies(ctx.req.headers.cookie) : {};
+        const token = _cookies[APP_COOKIE_NAME];
         if (!token) throw new TRPCError({ code: "UNAUTHORIZED", message: "로그인이 필요합니다." });
         const payload = await verifyToken(token);
         if (!payload || payload.role !== "admin") {
