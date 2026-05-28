@@ -65,7 +65,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {/* Logo */}
             <Link href="/home" className="flex items-center gap-3 group">
               <img src="/manus-storage/Logo_White_22c5f440.png" alt="ABLE Logo" className="h-9 shrink-0 drop-shadow" />
-              <div>
+              <div className="hidden sm:block">
                 <div className="font-semibold text-white text-sm tracking-wide" style={{ fontFamily: "'Noto Sans KR', sans-serif", fontWeight: 600 }}>
                   Dinner Order
                 </div>
