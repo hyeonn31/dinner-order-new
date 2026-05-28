@@ -178,7 +178,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         className="relative z-10 py-4 text-center text-xs"
         style={{ color: "rgba(180,200,255,0.45)", borderTop: "1px solid rgba(255,255,255,0.08)" }}
       >
-        저녁식사 신청 시스템 &mdash; 매일 오후 4시~6시 운영
+        저녁식사 신청 시스템 &mdash; 매일 오후 5시~6시 운영
       </footer>
     </div>
   );
