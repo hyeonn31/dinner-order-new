@@ -102,7 +102,7 @@ export default function Home() {
       </div>
 
       {/* Quick Actions */}
-      <div className={`grid grid-cols-1 gap-4 ${cards.length === 1 ? "sm:grid-cols-1 max-w-sm mx-auto" : cards.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+      <div className={`grid grid-cols-1 gap-4 ${cards.length === 1 ? "max-w-xs mx-auto" : cards.length === 2 ? "sm:grid-cols-2 max-w-2xl mx-auto" : "sm:grid-cols-3"}`}>
         {cards.map(({ href, icon, iconBg, title, desc, cta }) => (
           <Link key={href} href={href}>
             <div
