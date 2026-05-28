@@ -1,12 +1,46 @@
 import { Link } from "wouter";
 import { UtensilsCrossed, Settings, BarChart3, ArrowRight, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useAppAuth } from "@/contexts/AuthContext";
 
 export default function Home() {
+  const { isAdmin } = useAppAuth();
   const { data: todayRestaurants } = trpc.daily.todayRestaurants.useQuery();
   const { data: orders } = trpc.order.todayAll.useQuery();
 
   const hasSetup = todayRestaurants && todayRestaurants.length > 0;
+
+  const allCards = [
+    {
+      href: "/order",
+      icon: <UtensilsCrossed className="w-6 h-6" style={{ color: "rgba(150,200,255,1)" }} />,
+      iconBg: "rgba(80,120,255,0.30)",
+      title: "저녁 신청",
+      desc: "메뉴를 선택하고 신청하세요",
+      cta: "신청하기",
+      adminOnly: false,
+    },
+    {
+      href: "/admin",
+      icon: <Settings className="w-6 h-6" style={{ color: "rgba(200,160,255,1)" }} />,
+      iconBg: "rgba(150,80,255,0.30)",
+      title: "관리자",
+      desc: "오늘의 식당을 설정하세요",
+      cta: "설정하기",
+      adminOnly: true,
+    },
+    {
+      href: "/summary",
+      icon: <BarChart3 className="w-6 h-6" style={{ color: "rgba(120,230,170,1)" }} />,
+      iconBg: "rgba(40,180,100,0.30)",
+      title: "주문 취합",
+      desc: "신청 현황을 확인하세요",
+      cta: "확인하기",
+      adminOnly: true,
+    },
+  ];
+
+  const cards = allCards.filter(c => !c.adminOnly || isAdmin);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
@@ -68,33 +102,8 @@ export default function Home() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          {
-            href: "/order",
-            icon: <UtensilsCrossed className="w-6 h-6" style={{ color: "rgba(150,200,255,1)" }} />,
-            iconBg: "rgba(80,120,255,0.30)",
-            title: "저녁 신청",
-            desc: "메뉴를 선택하고 신청하세요",
-            cta: "신청하기",
-          },
-          {
-            href: "/admin",
-            icon: <Settings className="w-6 h-6" style={{ color: "rgba(200,160,255,1)" }} />,
-            iconBg: "rgba(150,80,255,0.30)",
-            title: "관리자",
-            desc: "오늘의 식당을 설정하세요",
-            cta: "설정하기",
-          },
-          {
-            href: "/summary",
-            icon: <BarChart3 className="w-6 h-6" style={{ color: "rgba(120,230,170,1)" }} />,
-            iconBg: "rgba(40,180,100,0.30)",
-            title: "주문 취합",
-            desc: "신청 현황을 확인하세요",
-            cta: "확인하기",
-          },
-        ].map(({ href, icon, iconBg, title, desc, cta }) => (
+      <div className={`grid grid-cols-1 gap-4 ${cards.length === 1 ? "sm:grid-cols-1 max-w-sm mx-auto" : cards.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+        {cards.map(({ href, icon, iconBg, title, desc, cta }) => (
           <Link key={href} href={href}>
             <div
               className="group rounded-2xl p-6 cursor-pointer transition-all duration-200 hover:-translate-y-1"
